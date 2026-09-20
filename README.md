@@ -18,6 +18,13 @@
   /></a>
 </p>
 
+<h3 align="center">A public JarvisHarness fork of FirstMate.</h3>
+
+<p align="center">
+  JarvisHarness inherits FirstMate's Git history and MIT license, then adapts the engine toward Herdr-default, public-engine/private-configuration operation.
+  See <a href="docs/jarvisharness.md">docs/jarvisharness.md</a> for the fork baseline and adaptation contract.
+</p>
+
 <h3 align="center">Talk to one agent. Ship with a crew.</h3>
 
 <p align="center">

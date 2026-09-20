@@ -1,0 +1,10 @@
+{
+  "schema": "jarvisharness-upstream-baseline-v1",
+  "repository": "georgewangyu/JarvisHarness",
+  "forked_from": "kunchenguid/firstmate",
+  "upstream_default_branch": "main",
+  "upstream_baseline_commit": "90cd351ac8b828d7074fe4a432acda246355bec7",
+  "baseline_meaning": "FirstMate commit inherited by this fork before the first JarvisHarness-specific commit.",
+  "selective_sync_status": "not_implemented",
+  "upstream_sync_policy_document": "docs/jarvisharness.md"
+}
