@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 720" role="img" aria-labelledby="title desc">
+  <title id="title">JarvisAIGeorge mission-control agent orchestration hero</title>
+  <desc id="desc">An original neon mission-control scene with a central launch tower, orbiting worker nodes, specialist agent modules, and a rocket path rising through a star field.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07111f" />
+      <stop offset="0.48" stop-color="#0b1d35" />
+      <stop offset="1" stop-color="#121433" />
+    </linearGradient>
+    <radialGradient id="coreGlow" cx="50%" cy="50%" r="60%">
+      <stop offset="0" stop-color="#8ff8ff" stop-opacity="0.95" />
+      <stop offset="0.36" stop-color="#42d7ff" stop-opacity="0.35" />
+      <stop offset="1" stop-color="#42d7ff" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#112944" />
+      <stop offset="1" stop-color="#0a1828" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7df9ff" />
+      <stop offset="0.5" stop-color="#7c6bff" />
+      <stop offset="1" stop-color="#ff9bd5" />
+    </linearGradient>
+    <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="1600" height="720" fill="url(#sky)" />
+  <g opacity="0.55">
+    <circle cx="154" cy="110" r="2" fill="#dffcff" />
+    <circle cx="276" cy="212" r="1.8" fill="#9fd8ff" />
+    <circle cx="432" cy="86" r="2.4" fill="#ffffff" />
+    <circle cx="1174" cy="88" r="2.2" fill="#dffcff" />
+    <circle cx="1388" cy="186" r="1.8" fill="#9fd8ff" />
+    <circle cx="1480" cy="62" r="2.4" fill="#ffffff" />
+    <circle cx="1010" cy="224" r="1.7" fill="#c7f7ff" />
+    <circle cx="616" cy="154" r="1.6" fill="#c7f7ff" />
+  </g>
+  <path d="M86 568 C306 492 476 522 650 552 C830 584 1008 632 1514 526" fill="none" stroke="#203f67" stroke-width="2" opacity="0.85" />
+  <path d="M96 612 C352 528 512 570 708 604 C922 640 1132 650 1504 582" fill="none" stroke="#183251" stroke-width="2" opacity="0.9" />
+  <ellipse cx="800" cy="382" rx="356" ry="176" fill="url(#coreGlow)" opacity="0.82" />
+  <g filter="url(#softGlow)">
+    <path d="M801 150 C908 208 982 310 982 430 C982 492 958 554 916 600 L686 600 C644 554 620 492 620 430 C620 310 694 208 801 150 Z" fill="#0d2035" stroke="#7df9ff" stroke-width="3" />
+    <path d="M801 196 C872 252 918 333 918 427 C918 475 904 520 876 560 L726 560 C698 520 684 475 684 427 C684 333 730 252 801 196 Z" fill="#132b47" stroke="#405f9d" stroke-width="2" />
+    <circle cx="801" cy="374" r="78" fill="#09182a" stroke="url(#accent)" stroke-width="6" />
+    <circle cx="801" cy="374" r="42" fill="#7df9ff" opacity="0.18" />
+    <path d="M801 328 L824 374 L801 420 L778 374 Z" fill="#7df9ff" />
+    <path d="M742 600 L860 600 L842 650 L760 650 Z" fill="#0a1628" stroke="#7df9ff" stroke-width="2" />
+  </g>
+  <g fill="none" stroke="#68e8ff" stroke-width="2" opacity="0.6">
+    <ellipse cx="801" cy="374" rx="470" ry="232" />
+    <ellipse cx="801" cy="374" rx="560" ry="108" transform="rotate(-13 801 374)" />
+    <ellipse cx="801" cy="374" rx="560" ry="108" transform="rotate(13 801 374)" />
+  </g>
+  <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="700" letter-spacing="2" text-anchor="middle">
+    <g transform="translate(320 288)">
+      <rect x="-118" y="-54" width="236" height="108" rx="24" fill="url(#panel)" stroke="#5fe7ff" stroke-width="2" />
+      <circle cx="-72" cy="0" r="20" fill="#7df9ff" opacity="0.2" stroke="#7df9ff" />
+      <text x="22" y="6" fill="#e9fbff" font-size="24">VIDEO</text>
+    </g>
+    <g transform="translate(1268 300)">
+      <rect x="-126" y="-54" width="252" height="108" rx="24" fill="url(#panel)" stroke="#b19cff" stroke-width="2" />
+      <circle cx="-80" cy="0" r="20" fill="#b19cff" opacity="0.2" stroke="#b19cff" />
+      <text x="26" y="6" fill="#f3efff" font-size="24">MEMORY</text>
+    </g>
+    <g transform="translate(432 526)">
+      <rect x="-132" y="-48" width="264" height="96" rx="22" fill="url(#panel)" stroke="#ff9bd5" stroke-width="2" />
+      <text x="0" y="8" fill="#ffeaf6" font-size="22">JOURNALING</text>
+    </g>
+    <g transform="translate(1160 532)">
+      <rect x="-126" y="-48" width="252" height="96" rx="22" fill="url(#panel)" stroke="#7df9ff" stroke-width="2" />
+      <text x="0" y="8" fill="#e9fbff" font-size="22">WORKERS</text>
+    </g>
+  </g>
+  <g stroke="url(#accent)" stroke-width="4" stroke-linecap="round" opacity="0.85">
+    <path d="M438 318 C560 348 640 362 724 374" />
+    <path d="M1142 330 C1024 350 946 366 878 376" />
+    <path d="M536 500 C612 466 660 430 728 394" />
+    <path d="M1060 504 C990 462 940 424 874 394" />
+  </g>
+  <g transform="translate(1052 118) rotate(24)">
+    <path d="M0 -52 C34 -24 46 18 26 72 L0 54 L-26 72 C-46 18 -34 -24 0 -52 Z" fill="#f8fbff" stroke="#7df9ff" stroke-width="2" />
+    <circle cx="0" cy="4" r="15" fill="#132b47" stroke="#7c6bff" stroke-width="3" />
+    <path d="M-17 70 L0 112 L17 70" fill="#ff9b48" opacity="0.9" />
+  </g>
+  <path d="M1016 168 C906 198 850 264 814 328" fill="none" stroke="#ff9bd5" stroke-width="3" stroke-dasharray="10 14" opacity="0.9" />
+  <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" text-anchor="middle">
+    <text x="800" y="86" fill="#e9fbff" font-size="58" font-weight="800" letter-spacing="4">JarvisAIGeorge</text>
+    <text x="800" y="122" fill="#8db6d6" font-size="22" letter-spacing="1.2">mission control for public agent orchestration experiments</text>
+  </g>
+  <g transform="translate(126 640)">
+    <rect x="0" y="0" width="424" height="42" rx="21" fill="#061120" stroke="#24486f" />
+    <circle cx="30" cy="21" r="7" fill="#7df9ff" />
+    <circle cx="58" cy="21" r="7" fill="#7c6bff" />
+    <circle cx="86" cy="21" r="7" fill="#ff9bd5" />
+    <text x="118" y="27" fill="#b9d8ea" font-family="Inter, ui-sans-serif, system-ui" font-size="18">Original SVG asset, generated for this repository.</text>
+  </g>
+</svg>
