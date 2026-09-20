@@ -25,6 +25,7 @@ make_case() {
 
   mkdir -p "$home/data/$id" "$home/projects" "$home/state" "$home/config"
   printf 'codex\n' > "$home/config/crew-harness"
+  printf 'worktree\n' > "$home/config/workspace-isolation"
   fm_test_spawn_brief "$home" "$id"
   touch "$home/state/.last-watcher-beat"
 
@@ -225,6 +226,7 @@ make_originless_case() {  # <name> <id>
 
   mkdir -p "$home/data/$id" "$home/projects" "$home/state" "$home/config"
   printf 'codex\n' > "$home/config/crew-harness"
+  printf 'worktree\n' > "$home/config/workspace-isolation"
   fm_test_spawn_brief "$home" "$id"
   touch "$home/state/.last-watcher-beat"
 
@@ -472,6 +474,7 @@ make_submodule_case() {  # <name> <id>
 
   mkdir -p "$home/data/$id" "$home/projects" "$home/state" "$home/config"
   printf 'codex\n' > "$home/config/crew-harness"
+  printf 'worktree\n' > "$home/config/workspace-isolation"
   fm_test_spawn_brief "$home" "$id"
   touch "$home/state/.last-watcher-beat"
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Spawn a direct report: a crewmate in a treehouse or Orca worktree, or a
-# secondmate in its isolated firstmate home.
+# Spawn a direct report: a crewmate in the configured project workspace
+# isolation mode, or a secondmate in its isolated firstmate home.
 # Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>]
 #        fm-spawn.sh <task-id> <project-dir> --scout [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>]
 #        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
@@ -65,7 +65,8 @@
 #   adapter, and experimental zellij, orca, and cmux adapters. Orca owns both
 #   the task worktree and terminal, so ship/scout Orca spawns do not run
 #   treehouse get; cmux is a session provider only, exactly like herdr/zellij,
-#   so it does. Auto-detected herdr stays silent like tmux; auto-detected cmux
+#   so it uses the shared checkout by default and Treehouse only when
+#   config/workspace-isolation=worktree. Auto-detected herdr stays silent like tmux; auto-detected cmux
 #   prints a loud stderr notice; zellij and orca are never auto-detected.
 #   codex-app is not a known backend yet; docs/codex-app-backend.md owns that
 #   blocked backend contract. Default tmux spawns do not write backend= to meta;
@@ -185,8 +186,13 @@
 #   Before a secondmate launch, the home is fast-forwarded to the primary's
 #   default-branch commit when safe: directly for a local home, or through the
 #   configured host for a remote home. Skipped syncs warn and launch unchanged.
-#   Ship/scout spawns refuse to launch unless the resolved task path is a real
-#   git worktree root distinct from both the spawning project and its repository's
+#   Ship/scout spawns default to config/workspace-isolation=shared-checkout: the
+#   resolved task path is the canonical project checkout, no Treehouse slot is
+#   requested, no task branch is created by the generated brief, and teardown
+#   never resets, removes, returns, or otherwise treats that checkout as disposable.
+#   Explicit config/workspace-isolation=worktree preserves the inherited
+#   behavior and refuses to launch unless the resolved task path is a real git
+#   worktree root distinct from both the spawning project and its repository's
 #   primary checkout, including when the spawning project is a linked worktree.
 #   On the backends that discover that path by reading the task pane's own cwd,
 #   the same isolation test screens every read: a pane still showing the project
@@ -195,12 +201,12 @@
 #   itself a linked worktree of the project repository still launches. A pane
 #   that never reaches an isolated worktree refuses at the end of that wait,
 #   naming the last path seen and why it was rejected.
-#   That placement is proven only at launch. Every ship or scout pane therefore
-#   also receives `export FM_TASK_ID=<task-id>` before the launch command, on
-#   the same channel as GOTMPDIR, and bin/fm-test-run.sh refuses to execute the
-#   behavior suite from the repository primary checkout while that marker is
-#   set (its header owns the refusal). A secondmate runs in its own home and is
-#   not marked.
+#   Worktree-mode placement is proven only at launch. Every worktree-mode ship or
+#   scout pane therefore also receives `export FM_TASK_ID=<task-id>` before the
+#   launch command, on the same channel as GOTMPDIR, and bin/fm-test-run.sh
+#   refuses to execute the behavior suite from the repository primary checkout
+#   while that marker is set (its header owns the refusal). Shared-checkout
+#   workers and secondmates are not marked.
 #   Only after this isolation check, every fresh ship or scout requires a clean
 #   task worktree. When an origin configuration is detected, spawn fetches it,
 #   resolves the current remote default branch, and resets to its tip. When none
@@ -517,6 +523,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-dod-lib.sh"
 # shellcheck source=bin/fm-trace-context-lib.sh
 . "$SCRIPT_DIR/fm-trace-context-lib.sh"
+# shellcheck source=bin/fm-workspace-lib.sh
+. "$SCRIPT_DIR/fm-workspace-lib.sh"
 # shellcheck source=bin/fm-remote-readiness-lib.sh
 . "$SCRIPT_DIR/fm-remote-readiness-lib.sh"
 # shellcheck source=bin/fm-timeout-lib.sh
@@ -2603,7 +2611,8 @@ else
   WT=""
   BRIEF="$DATA/$ID/brief.md"
 fi
-if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
+WORKSPACE_ISOLATION_MODE=$(fm_workspace_isolation_mode "$CONFIG") || exit 1
+if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ] && [ "$WORKSPACE_ISOLATION_MODE" = worktree ]; then
   SPAWN_TREEHOUSE_PROJECT_LOCK=$(fm_treehouse_project_lock_path "$PROJ_ABS") || {
     echo "error: could not resolve the shared Treehouse project lock for $PROJ_ABS" >&2
     exit 1
@@ -3660,7 +3669,11 @@ if [ "$RELAUNCH" -eq 1 ]; then
       exit 1
     fi
   fi
-  [ "$KIND" = secondmate ] || validate_spawn_worktree "relaunch" "$T"
+  if [ "$KIND" != secondmate ] && [ "$WORKSPACE_ISOLATION_MODE" = worktree ]; then
+    validate_spawn_worktree "relaunch" "$T"
+  fi
+elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ] && [ "$WORKSPACE_ISOLATION_MODE" = shared-checkout ]; then
+  WT=$PROJ_ABS
 elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   spawn_send_text_line "$WT_TARGET" 'treehouse get'
 
@@ -3743,7 +3756,7 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
     SPAWN_SLOT_CLAIMED=1
   fi
 fi
-if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
+if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] && [ "$WORKSPACE_ISOLATION_MODE" != shared-checkout ]; then
   freshen_spawn_worktree_base "$WT" || exit 1
 fi
 
@@ -3774,18 +3787,22 @@ fi
 AGY_TRUST_PREREGISTERED=0
 case "$HARNESS" in
 claude*)
-  if [ "$KIND" = secondmate ]; then
-    spawn_trust_args=(--secondmate-home "$PROJ_ABS" "$ID")
+  if [ "$KIND" != secondmate ] && [ "$WORKSPACE_ISOLATION_MODE" = shared-checkout ]; then
+    :
   else
-    spawn_trust_args=("$WT" "$PROJ_ABS")
-  fi
-  if ! "$FM_ROOT/bin/fm-claude-trust.sh" "${spawn_trust_args[@]}" >/dev/null; then
-    echo "error: could not pre-register Claude workspace trust for $WT; refusing to launch a claude worker that would wedge on the trust dialog; inspect window $T" >&2
-    exit 1
+    if [ "$KIND" = secondmate ]; then
+      spawn_trust_args=(--secondmate-home "$PROJ_ABS" "$ID")
+    else
+      spawn_trust_args=("$WT" "$PROJ_ABS")
+    fi
+    if ! "$FM_ROOT/bin/fm-claude-trust.sh" "${spawn_trust_args[@]}" >/dev/null; then
+      echo "error: could not pre-register Claude workspace trust for $WT; refusing to launch a claude worker that would wedge on the trust dialog; inspect window $T" >&2
+      exit 1
+    fi
   fi
   ;;
 agy)
-  if [ "$KIND" != secondmate ]; then
+  if [ "$KIND" != secondmate ] && [ "$WORKSPACE_ISOLATION_MODE" != shared-checkout ]; then
     if "$FM_ROOT/bin/fm-agy-trust.sh" "$WT" "$PROJ_ABS" >/dev/null; then
       AGY_TRUST_PREREGISTERED=1
     else
@@ -4294,6 +4311,7 @@ preserve_relaunch_meta() {
   echo "effort=${EFFORT:-default}"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
+  [ "$KIND" = secondmate ] || echo "workspace_isolation=$WORKSPACE_ISOLATION_MODE"
   # Default-off writes no traceparent= line.
   # backend= is written only for a non-default (non-tmux) backend, so the
   # default path's meta stays byte-identical (absent backend= means tmux;
@@ -4549,7 +4567,7 @@ spawn_send_text_line "$T" "export COMPACT_ADVISER_DISABLE=1"
 # ones assigned an isolated worktree; a secondmate runs its own home instead.
 # The id reached a validated bare-slug charset above, so it carries no shell
 # syntax of its own.
-if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
+if { [ "$KIND" = ship ] || [ "$KIND" = scout ]; } && [ "$WORKSPACE_ISOLATION_MODE" != shared-checkout ]; then
   spawn_send_text_line "$T" "export FM_TASK_ID=$ID"
 fi
 # Send through the exact channel that already ships GOTMPDIR, so every backend

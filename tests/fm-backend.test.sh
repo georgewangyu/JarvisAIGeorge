@@ -904,6 +904,7 @@ run_spawn_symlink_case() {  # <label> <physical|logical>
   write_spawn_brief "$data/$id/brief.md" "$id"
   state="$TMP_ROOT/symlink-state-$label"; config="$TMP_ROOT/symlink-config-$label"
   mkdir -p "$state" "$config"
+  printf 'worktree\n' > "$config/workspace-isolation"
   log="$TMP_ROOT/symlink-spawn-$label.log"
 
   out=$(run_spawn_case "$ROOT" "$fb" "$log" "$state" "$data" "$config" "$proj" -- "$id" "$proj" claude --mode no-mistakes --yolo off 2>&1)

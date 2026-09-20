@@ -51,7 +51,9 @@
 # "Delivery contract: mode=<mode>" line. bin/fm-spawn.sh reads that line and refuses
 # to launch a ship task whose explicit --mode disagrees, so an adjusted brief and the
 # recorded task metadata cannot drift apart.
-# Ship briefs begin with a worktree-isolation assertion before the branch step.
+# Ship briefs follow config/workspace-isolation: shared-checkout briefs forbid
+# branch and worktree creation, while explicit worktree-mode briefs retain the
+# worktree-isolation assertion before the branch step.
 # --mode is refused on scout and secondmate scaffolds: a scout's deliverable is a
 # report rather than a merge, and a charter is not a delivery contract.
 # There is no --yolo flag here. The worker never owns merge decisions, so yolo is
@@ -94,6 +96,8 @@ esac
 . "$SCRIPT_DIR/fm-classify-lib.sh"
 # shellcheck source=bin/fm-dod-lib.sh
 . "$SCRIPT_DIR/fm-dod-lib.sh"
+# shellcheck source=bin/fm-workspace-lib.sh
+. "$SCRIPT_DIR/fm-workspace-lib.sh"
 PAUSED_VERB=${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}
 CREWMATE_PAUSE_WAIT_EXAMPLES='an upstream release, a rate-limit reset, a scheduled window, or your own validation round'
 
@@ -447,6 +451,23 @@ case "$MODE" in
 esac
 RULE1=$(fm_ship_rule_one "$MODE" "$ID") || exit 1
 DOD=$(fm_dod_block "$MODE" "$ID") || exit 1
+WORKSPACE_ISOLATION_MODE=$(fm_workspace_isolation_mode "${FM_CONFIG_OVERRIDE:-${FM_HOME:-$FM_ROOT}/config}") || exit 1
+if [ "$WORKSPACE_ISOLATION_MODE" = shared-checkout ]; then
+  SETUP_INTRO="You are in the existing shared checkout of $REPO."
+  SETUP_VERIFY="**Verify location before anything else.** Run \`pwd -P\` and \`git rev-parse --show-toplevel\`; both must resolve to the canonical repository checkout you were launched in.
+Shared-checkout mode has no isolation: concurrent workers edit the same files and can conflict, so stop with \`blocked: shared checkout conflict\` if another edit is in your way."
+  SETUP_FIRST_ACTION="1. First action: inspect \`git status --short\`; do not create a branch or Git worktree."
+  RULE2="2. Stay inside this shared checkout; modify nothing outside it."
+  MEMORY_LOCATION="shared checkout"
+else
+  SETUP_INTRO="You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch."
+  SETUP_VERIFY="**Verify isolation before anything else.** Run \`pwd -P\` and \`git rev-parse --show-toplevel\`; both must resolve to the disposable task worktree you were launched in, such as a treehouse pool path or an Orca-managed worktree, not the primary checkout firstmate operates from.
+The path check is authoritative: \`git rev-parse --git-dir\` and \`git rev-parse --git-common-dir\` can help inspect the repo, but they do not prove you are outside the primary checkout.
+If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append \`blocked: launched in primary checkout, not an isolated worktree\` to the status file and stop."
+  SETUP_FIRST_ACTION="1. First action: create your branch: \`git checkout -b fm/$ID\`$SETUP2"
+  RULE2="2. Stay inside this worktree; modify nothing outside it."
+  MEMORY_LOCATION="worktree"
+fi
 
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
@@ -456,17 +477,15 @@ $TASK_SECTION
 $HERDR_SECTION
 
 # Setup
-You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.
+$SETUP_INTRO
 
-**Verify isolation before anything else.** Run \`pwd -P\` and \`git rev-parse --show-toplevel\`; both must resolve to the disposable task worktree you were launched in, such as a treehouse pool path or an Orca-managed worktree, not the primary checkout firstmate operates from.
-The path check is authoritative: \`git rev-parse --git-dir\` and \`git rev-parse --git-common-dir\` can help inspect the repo, but they do not prove you are outside the primary checkout.
-If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append \`blocked: launched in primary checkout, not an isolated worktree\` to the status file and stop.
+$SETUP_VERIFY
 
-1. First action: create your branch: \`git checkout -b fm/$ID\`$SETUP2
+$SETUP_FIRST_ACTION
 
 # Rules
 $RULE1
-2. Stay inside this worktree; modify nothing outside it.
+$RULE2
 3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
 4. Report status by appending one line:
    \`echo "{state}: {one short line}" >> $STATUS_FILE\`
@@ -506,7 +525,7 @@ $ASK_USER_BLOCK
 $INBOX_SECTION
 
 # Project memory
-If \`AGENTS.md\` or \`CLAUDE.md\` already exists, or if this task produced durable project-intrinsic knowledge, run \`$FM_ROOT/bin/fm-ensure-agents-md.sh .\` in the worktree.
+If \`AGENTS.md\` or \`CLAUDE.md\` already exists, or if this task produced durable project-intrinsic knowledge, run \`$FM_ROOT/bin/fm-ensure-agents-md.sh .\` in the $MEMORY_LOCATION.
 Record only project knowledge useful to almost every future session.
 For anything the codebase already shows, prefer a pointer to the authoritative file, command, or doc over copying the detail.
 If you touch a project \`AGENTS.md\`, follow \`$FM_ROOT/bin/fm-ensure-agents-md.sh\`'s self-governance contract in the same pass.

@@ -54,6 +54,8 @@ FM_BACKEND_DEFAULT_ROOT="$(cd "$FM_BACKEND_LIB_DIR/.." && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-${FM_ROOT:-$FM_BACKEND_DEFAULT_ROOT}}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 FM_BACKEND_CONFIG_DIR="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
+# shellcheck source=bin/fm-workspace-lib.sh
+. "$FM_BACKEND_LIB_DIR/fm-workspace-lib.sh"
 
 # Verified backend adapters. Extend only after a backend gets its own
 # bin/backends/<name>.sh and empirical verification, mirroring AGENTS.md
@@ -306,12 +308,18 @@ fm_backend_validate_spawn() {  # <name>
 # Prints a single space-separated line and returns 0 for a known backend; returns
 # 1 and prints nothing for an unknown backend.
 fm_backend_required_tools() {  # <backend>
-  case "$1" in
-    tmux)   printf '%s' 'tmux treehouse' ;;
-    herdr)  printf '%s' 'herdr jq treehouse' ;;
-    zellij) printf '%s' 'zellij jq treehouse' ;;
-    cmux)   printf '%s' 'cmux jq treehouse' ;;
-    orca)   printf '%s' 'orca' ;;
+  local workspace_mode
+  workspace_mode=$(fm_workspace_isolation_mode "$FM_BACKEND_CONFIG_DIR") || return 1
+  case "$1:$workspace_mode" in
+    tmux:shared-checkout)   printf '%s' 'tmux' ;;
+    herdr:shared-checkout)  printf '%s' 'herdr jq' ;;
+    zellij:shared-checkout) printf '%s' 'zellij jq' ;;
+    cmux:shared-checkout)   printf '%s' 'cmux jq' ;;
+    tmux:worktree)          printf '%s' 'tmux treehouse' ;;
+    herdr:worktree)         printf '%s' 'herdr jq treehouse' ;;
+    zellij:worktree)        printf '%s' 'zellij jq treehouse' ;;
+    cmux:worktree)          printf '%s' 'cmux jq treehouse' ;;
+    orca:*)                 printf '%s' 'orca' ;;
     *) return 1 ;;
   esac
 }
