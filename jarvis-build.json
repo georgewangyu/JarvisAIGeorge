@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "plugin_dir": "plugins/jarvis-ai-george",
+  "peers_dir": "plugins/jarvis-ai-george/extensions",
+  "peers": [
+    {"repo": "georgewangyu/GeorgeCodingAgent", "ref": "main", "manifest_path": "jarvis-extension.json"}
+  ],
+  "marketplace": {
+    "name": "jarvis-ai-george",
+    "display_name": "JarvisAIGeorge",
+    "description": "Jarvis core plus its extensions: a manager agent, a read-only reviewer, and lifecycle skills, with one plugin per extension.",
+    "owner": {"name": "George Wang", "url": "https://github.com/georgewangyu"}
+  }
+}

@@ -1,0 +1,32 @@
+name: jarvis-plugin-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Jarvis plugin build, skills, scrub
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Generated adapters match sources, frontmatter, duplicate skill names
+        run: python3 tools/jarvis-build.py --check
+      - name: Bitter-lesson tags
+        run: python3 plugins/jarvis-ai-george/skills/principles-bitter-lesson/scripts/bitter_lesson.py check --root plugins/jarvis-ai-george
+      - name: Skill script tests
+        run: |
+          set -eu
+          python3 -m unittest discover -s plugins/jarvis-ai-george/skills/principles-bitter-lesson/tests
+          python3 -m unittest discover -s plugins/jarvis-ai-george/skills/mistake-miner/tests
+      - name: Scrub (public marker list)
+        run: tools/scrub-lint/scripts/scrub-lint check --lists public

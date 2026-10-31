@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "id": "george-coding-agent",
+  "name": "GeorgeCodingAgent",
+  "version": "0.1.0",
+  "description": "Coding extension for Jarvis: a coding worker agent plus the build, verify, review and ship skills it uses.",
+  "repo": "georgewangyu/GeorgeCodingAgent",
+  "license": "MIT",
+  "author": {
+    "name": "George Wang",
+    "url": "https://github.com/georgewangyu"
+  },
+  "keywords": [
+    "coding",
+    "skills",
+    "tdd",
+    "review",
+    "ship"
+  ],
+  "agents": [
+    {
+      "name": "coding",
+      "summary": "coding worker that builds or fixes code one verified slice at a time",
+      "dispatch_when": "implement, fix, refactor, test or build work in a code repo"
+    }
+  ],
+  "skills": [
+    "incremental-implementation",
+    "source-driven-development",
+    "api-and-interface-design",
+    "frontend-ui-engineering",
+    "test-driven-development",
+    "browser-testing",
+    "debugging-and-error-recovery",
+    "code-review-and-quality",
+    "code-simplification",
+    "security-and-hardening",
+    "performance-optimization",
+    "quality-constraints",
+    "git-workflow-and-versioning",
+    "ci-cd-and-automation",
+    "deprecation-and-migration",
+    "observability-and-instrumentation",
+    "shipping-and-launch"
+  ],
+  "relies_on_core": [
+    "planning-and-task-breakdown",
+    "spec-driven-development",
+    "doubt-driven-review",
+    "context-engineering",
+    "documentation-and-adrs",
+    "mistake-miner",
+    "brainstorm",
+    "grill-me",
+    "principles-first-principles",
+    "principles-scientific-method"
+  ],
+  "requires": []
+}

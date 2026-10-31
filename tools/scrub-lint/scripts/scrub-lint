@@ -1,0 +1,4 @@
+#!/bin/sh
+# Thin wrapper so hooks and CI can call a stable path.
+here="$(cd "$(dirname "$0")" && pwd)"
+exec python3 "$here/scrub_lint.py" "$@"

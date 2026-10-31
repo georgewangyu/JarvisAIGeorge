@@ -1,0 +1,36 @@
+{
+  "name": "jarvis-ai-george",
+  "interface": {
+    "displayName": "JarvisAIGeorge"
+  },
+  "plugins": [
+    {
+      "name": "jarvis-ai-george",
+      "version": "0.1.0",
+      "description": "Jarvis core: the manager agent, a read-only reviewer, and the planning, review and reasoning skills every extension relies on.",
+      "source": {
+        "source": "local",
+        "path": "./plugins/jarvis-ai-george"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "george-coding-agent",
+      "version": "0.1.0",
+      "description": "Coding extension for Jarvis: a coding worker agent plus the build, verify, review and ship skills it uses.",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/georgewangyu/GeorgeCodingAgent.git"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

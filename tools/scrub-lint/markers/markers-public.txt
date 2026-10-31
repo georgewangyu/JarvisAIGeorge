@@ -1,0 +1,49 @@
+# scrub-lint PUBLIC marker list. Safe to commit into a public repo: it holds only
+# structural id shapes in clear text, plus internal host families and internal
+# tool names as salted sha256 tokens, so the list itself names nothing.
+#
+# Formats (one per line, # starts a comment line):
+#   CLASS  PYTHON_REGEX
+#   CLASS  WORD <sha256>     word, or any run of its hyphen parts, case-insensitive
+#   CLASS  PHRASE <sha256>   two adjacent words, case-insensitive
+#   CLASS  DOMAIN <sha256>   any run of labels inside a dotted hostname, case-insensitive
+#   ALLOWHOST  PYTHON_REGEX  full-match on a dotted run; public hits inside its
+#                            (?P<allow>...) group are dropped, never private hits
+# Generate hashed lines with: scrub-lint hash WORD <token> --class TOOL
+# Never put a specific person, account, host, or package here; those go in the
+# private list outside every repo.
+
+# Ticket, review, and account ids
+ID          (?i)\bCR-\d{4,}\b
+ID          (?i)\bSIM-\d+\b
+ACCOUNT     (?<![0-9A-Za-z.])[0-9]{12}(?![0-9A-Za-z])(?!\.[0-9])
+
+# Raw object-store and registry endpoints (endpoints belong in an edition-config layer)
+ENDPOINT    (?i)\bs3[.-](?:[a-z0-9-]+\.){0,2}amazonaws\.com\b
+ENDPOINT    (?i)\b[0-9]{12}\.dkr\.ecr\.
+
+# Public host shapes that are never internal (suppress HOST hits on the whole dotted run)
+ALLOWHOST   (?i)(?:[a-z0-9-]+\.)*(?P<allow>aws\.amazon\.com)
+ALLOWHOST   (?i)(?P<allow>(?:(?:us|eu|apac|global)\.)?amazon\.(?:nova|titan|rerank)(?:-[a-z0-9]+)*)
+
+# Internal host families and labels (hashed)
+HOST  DOMAIN 34618e9b6b83af87efd6199837cc7ef869e154c816704b03432cf735602e233f
+HOST  DOMAIN 8d4626c48df3f6af2bb42b986ce961ba5d9190f8981b139731e56fecfcef0944
+HOST  DOMAIN 4d00ccbdd191ec4d649a3d2911ac46408fdd01d3c5998c0e5c833c76ab72673f
+HOST  DOMAIN 8eefcbd2029dee195702564806486bb0de0aafe98d2eb798c5763a595d98617a
+HOST  DOMAIN d23fe118313f3c87db29825f60650eca0ea32cdad2b1c47a47b92907a86b4e06
+HOST  DOMAIN f8271b65bdef2e5b859ad05db5f115a119cbf3f73526a2e642c23f264237446e
+HOST  DOMAIN bfe59c6e7d2dabb5a13e2d25ebdb9233709e7fd979b0f0980d1feee2045c86de
+
+# Internal tool and brand names (hashed)
+TOOL  WORD b481c36d92d5b80595a5dc5719779abe22568365ed5bdc18b606569db90f6840
+TOOL  WORD 0d47ea2e150f7022460eda71cf74091f27900c9f06d458a44c8213b4b3a82b5d
+TOOL  WORD d76ef30b5f5de3fb9b298903dd0f0b62669dabf2af9ad71e4453d92d925dd8c2
+TOOL  WORD e078979158d788675b1f6adba332837a772a9ce3db70d013918dd3b59c434325
+TOOL  WORD e0a8d1c97f5426fd92eaf65c9c90842a1421ff579616dbc1f4e1555d981b0dd1
+TOOL  WORD 8b29cec85109431dda099859c744e02f370314517212c0c34d5f8585b053a8cd
+TOOL  WORD d4fc5e46a0590c6cb116c4a1c703f8c364503f74c98d93a37159cbbdb9f4a519
+TOOL  WORD d28911063a76feec0c66c698dabc81119fa4bfe0acaaf95314a2c5426e45c093
+TOOL  WORD b92009dd39b624632fa984834dafbc327c01ffa9ac8acb481a6cc14518d88a4f
+TOOL  PHRASE 063c840794466edeb02aae605bb6a8eb4378cff016086da6ca1ec16934fed411
+TOOL  PHRASE ad16ec3cbd2ad84c4e922ee6646ddb0ca9646bdfc102827acf378fc9284ef6d9

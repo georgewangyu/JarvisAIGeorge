@@ -1,0 +1,11 @@
+# Skills enforced by the bitter-lesson check. One folder per line.
+# Principle skills (principles*) are exempt.
+skills/start-playbook
+skills/grill-me
+skills/brainstorm
+skills/spec-driven-development
+skills/mistake-miner
+skills/planning-and-task-breakdown
+skills/context-engineering
+skills/doubt-driven-review
+skills/documentation-and-adrs

@@ -1,0 +1,24 @@
+{
+  "name": "jarvis-ai-george",
+  "version": "0.1.0",
+  "description": "Jarvis core: the manager agent, a read-only reviewer, and the planning, review and reasoning skills every extension relies on.",
+  "author": {
+    "name": "George Wang",
+    "url": "https://github.com/georgewangyu"
+  },
+  "homepage": "https://github.com/georgewangyu/JarvisAIGeorge",
+  "repository": "https://github.com/georgewangyu/JarvisAIGeorge",
+  "license": "MIT",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "JarvisAIGeorge",
+    "shortDescription": "Jarvis core: the manager agent, a read-only reviewer, and the planning, review and reasoning skills every extension relies on.",
+    "developerName": "George Wang",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ]
+  }
+}
