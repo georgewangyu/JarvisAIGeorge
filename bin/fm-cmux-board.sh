@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# fm-cmux-board.sh - read-only live fleet board for the cmux Workers layout.
+#
+# Usage: FM_HOME=<home> bin/fm-cmux-board.sh [--once]
+#
+# Runs in the generated header workspace of a home's "<Home>: Workers" group
+# (bin/backends/cmux-layout.sh starts it). Every FM_CMUX_BOARD_INTERVAL seconds
+# (default 10) it reads each task's current state through bin/fm-crew-state.sh
+# with forge reads off, redraws a small table only when it changed, and asks
+# the layout to rename the group with live counts and color each worker tab:
+# needs you = Orange, done = Charcoal, working = no color.
+#
+# It never steers, types into, wakes, or closes a worker; supervision and
+# cleanup stay with the watcher and bin/fm-teardown.sh. --once prints one board
+# and exits (tests and manual checks). docs/cmux-backend.md "Workers layout".
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FM_ROOT="${FM_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+FM_HOME="${FM_HOME:-$FM_ROOT}"
+export FM_ROOT FM_HOME
+STATE="$FM_HOME/state"
+INTERVAL="${FM_CMUX_BOARD_INTERVAL:-10}"
+ONCE=0
+[ "${1:-}" = --once ] && ONCE=1
+
+# shellcheck source=/dev/null
+. "$FM_ROOT/bin/backends/cmux.sh"
+
+meta_get() {  # <file> <key>
+  local line v=""
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in "$2="*) v=${line#"$2="} ;; esac
+  done < "$1"
+  printf '%s' "$v"
+}
+
+render() {  # -> board text on stdout; "<ws>\t<bucket>" lines on fd 3
+  local m id ws st line b n_work=0 n_need=0 n_done=0 rows=""
+  for m in "$STATE"/*.meta; do
+    [ -f "$m" ] || continue
+    id=$(basename "$m" .meta)
+    [ "$(meta_get "$m" kind)" = secondmate ] && continue
+    ws=$(meta_get "$m" cmux_workspace_id)
+    line=$(FM_CREW_STATE_NO_FORGE=1 "$FM_ROOT/bin/fm-crew-state.sh" "$id" 2>/dev/null | head -1)
+    st=${line#state: }; st=${st%% *}
+    [ -n "$st" ] || st=unknown
+    b=$(fm_cmux_layout_bucket "$st")
+    case "$b" in
+      'needs you') n_need=$((n_need + 1)) ;;
+      done) n_done=$((n_done + 1)) ;;
+      *) n_work=$((n_work + 1)) ;;
+    esac
+    rows="$rows$(printf '  %-10s %-28s %s' "$b" "$id" "$st")"$'\n'
+    [ -n "$ws" ] && printf '%s\t%s\n' "$ws" "$b" >&3
+  done
+  SUMMARY=""
+  [ "$n_work" -gt 0 ] && SUMMARY="$n_work working"
+  [ "$n_need" -gt 0 ] && SUMMARY="${SUMMARY:+$SUMMARY · }$n_need needs you"
+  [ "$n_done" -gt 0 ] && SUMMARY="${SUMMARY:+$SUMMARY · }$n_done done"
+  printf '%s\n' "$(fm_cmux_layout_workers_label)"
+  printf '  %s\n\n' "${SUMMARY:-idle}"
+  if [ -n "$rows" ]; then printf '%s' "$rows"; else printf '  no workers\n'; fi
+}
+
+prev=""
+while :; do
+  tsv=$(mktemp "${TMPDIR:-/tmp}/fm-board.XXXXXX")
+  SUMMARY=""
+  board=$(render 3>"$tsv")
+  SUMMARY=$(printf '%s\n' "$board" | sed -n 2p | sed 's/^  //')
+  [ "$SUMMARY" = idle ] && SUMMARY=""
+  if [ "$ONCE" = 1 ]; then
+    printf '%s\n' "$board"
+    rm -f "$tsv"
+    exit 0
+  fi
+  if [ "$board" != "$prev" ]; then
+    printf '\033[H\033[2J%s\n' "$board"
+    prev=$board
+  fi
+  if fm_cmux_layout_enabled; then
+    w=$(fm_cmux_layout_window_of "$(cat "$STATE/.cmux-manager-ws" 2>/dev/null)")
+    gid=""
+    [ -n "$w" ] && gid=$(fm_cmux_layout_find_group "$w")
+    [ -n "$gid" ] && fm_cmux_layout_sync "$w" "$gid" "$SUMMARY" < "$tsv"
+  fi
+  rm -f "$tsv"
+  sleep "$INTERVAL"
+done

@@ -1648,6 +1648,19 @@ FM_CMUX_CLAUDE_COMPOSER_LIVE=1 bin/fm-test-run.sh tests/fm-cmux-claude-composer-
 That guard still addresses the worker by task selector, so it no longer reaches the typed submit path and is not a current refresh entry point for this guarantee.
 The portable classifier regression is `tests/fm-backend-cmux.test.sh`.
 
+### Workers layout (2026-10-31)
+
+Live run on cmux 0.64.25 (106), macOS aarch64, in a throwaway cmux window, a throwaway home under `/tmp`, a fresh `CLAUDE_CONFIG_DIR`, and a local bare origin:
+
+- The first layout spawn renamed the recorded manager tab to `Jarvis` (pinned, colored) and created the anchor-only `Jarvis: Workers` group with the board in its header; the task tab `◆ hello2` landed inside the group with `fm-<home-tag>-hello2` as its description.
+- The core plugin hook set the worker's `jarvis` pill to `working` during the turn and `done` when it ended.
+- The board renamed the group `Jarvis: Workers · 1 working`, then `· 1 done`, and colored the done tab charcoal.
+- `bin/fm-watch.sh` exited with `signal: .../hello2.status .../hello2.turn-ended` on the worker's `done:` line.
+- After `bin/fm-merge-local.sh` and a push to the bare origin, `bin/fm-teardown.sh` closed the worker tab and left the manager tab and group.
+- Found and fixed in the same run: `workspace list` covers only the caller's window, so a teardown run from another window missed the task. With the layout on, lookups read every window.
+
+Not exercised: a live Claude manager session driving this loop (that needs the full bootstrap toolchain), Codex workers (not installed; the board polls their state the same way), and secondmates on cmux (still refused by `bin/fm-spawn.sh`).
+
 ## Codex App host tools
 
 A reusable Desktop host-tool smoke ran on 2026-07-06 against Codex Desktop bundle version 26.623.101652, build 4674, bundle id `com.openai.codex`.

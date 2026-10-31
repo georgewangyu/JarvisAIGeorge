@@ -112,6 +112,37 @@ Firstmate does not attempt to close the macOS window because cmux's socket canno
 Real tests share the captain's running app rather than creating an isolated cmux session.
 `tests/cmux-test-safety.sh` permits cleanup only for an exact currently listed `fm-test-` workspace and never enumerates and closes unrelated workspaces or relaunches the app.
 
+## Workers layout
+
+Opt in per home with local `config/cmux-layout` containing `workers`, or `FM_CMUX_LAYOUT=workers` for one launch.
+Without it the adapter behaves exactly as described above.
+`bin/backends/cmux-layout.sh` owns the layout and `bin/fm-cmux-board.sh` owns the board.
+
+```text
+[pinned] Jarvis                                   manager tab, standalone
+[pinned] Jarvis: Workers · 1 working · 1 needs you
+           (header runs the read-only board)
+           ◆ fix-login                            one workspace per task
+           ◆ add-tests                            orange = needs you, charcoal = done
+```
+
+- **Manager tab.** The first layout spawn records the caller's cmux workspace in `state/.cmux-manager-ws`, renames it to the home name, pins it, colors it, and keeps it right before its Workers group.
+  The home name is `config/cmux-home-name` when present, else `Jarvis` for a primary and `Friday <id>` for a secondmate home.
+- **Workers group.** One anchor-only cmux workspace group per home and window, named `<home>: Workers`, created under a home-local lock and an idempotency key.
+  Task workspaces are created inside it with `--group`.
+- **Board.** The group's generated header runs `bin/fm-cmux-board.sh`.
+  Every 10 seconds (`FM_CMUX_BOARD_INTERVAL`) it reads each task through `bin/fm-crew-state.sh` with forge reads off, redraws on change, renames the group with live counts, and colors worker tabs.
+  It never types into, wakes, or closes a worker.
+  Because it reads the same pane and run-step state as supervision, it covers Codex and every other harness, including those that run no hooks.
+- **Titles and identity.** A task tab is titled `◆ <task-id>`, and its scoped label `fm-<home-tag>-<id>` moves to the cmux workspace description.
+  Every lookup accepts the title or the description, so home scoping, recovery, list, and cleanup keep working.
+  With the layout on, lookups read every cmux window instead of only the caller's, so a teardown or peek run from another window still finds the task.
+- **Sidebar state for Claude.** The core plugin's `hooks/jarvis-sidebar.sh` sets a `jarvis` pill on its own workspace: `working` on a prompt or tool call, `needs you` on a permission prompt, `done` when a turn ends, cleared at session end.
+  Idle reminders are ignored, and it is a no-op outside cmux.
+- **Wake and cleanup** are unchanged: the watcher wakes the manager on a worker's status event, and `bin/fm-teardown.sh` closes the worker tab only after its work has landed.
+
+Gate evidence and what is untested (Codex, secondmates): `docs/verification/runtime-backends.md#cmux`.
+
 ## Active limits
 
 - cmux is experimental, macOS-only, GUI-first, and requires the app running.
@@ -120,7 +151,7 @@ Real tests share the captain's running app rather than creating an isolated cmux
 - There is no native busy or push-event signal.
 - A target can disappear after structural readiness and before the operation.
 - The only-workspace cleanup path leaves a fresh default workspace and cannot close the window.
-- Label lookup and recovery are currently scoped to the current cmux window, so a task moved to a non-current window is a known recovery blind spot.
+- Without the Workers layout, label lookup and recovery are scoped to the current cmux window, so a task moved to a non-current window is a known recovery blind spot. The layout reads every window.
 - Workspace ids do not survive app relaunch and are never recovery authority.
 
 ## Regression entry points

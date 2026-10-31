@@ -120,6 +120,9 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 # shellcheck source=bin/fm-composer-lib.sh
 . "$FM_BACKEND_CMUX_ROOT/bin/fm-composer-lib.sh"
 
+# Opt-in Jarvis Workers layout (docs/cmux-backend.md "Workers layout").
+. "$FM_BACKEND_CMUX_ROOT/bin/backends/cmux-layout.sh"
+
 # Verified minimum: the version the live pass ran against (docs/cmux-backend.md).
 FM_BACKEND_CMUX_MIN_MAJOR=0
 FM_BACKEND_CMUX_MIN_MINOR=64
@@ -325,14 +328,35 @@ fm_backend_cmux_scoped_title() {  # <fm-task-label>
   printf 'fm-%s-%s' "$home" "$rest"
 }
 
+# fm_backend_cmux_workspaces_json: every workspace in every cmux window as one
+# `{"workspaces":[...]}` object. `workspace list` alone covers only the caller's
+# window, which would hide a task the Workers layout placed in the manager's
+# window from a teardown or peek run elsewhere. Only the layout widens the read.
+fm_backend_cmux_workspaces_json() {
+  local wins wid
+  # Without the Workers layout keep the original current-window read exactly.
+  if ! fm_cmux_layout_enabled; then
+    fm_backend_cmux_cli workspace list --json --id-format uuids 2>/dev/null
+    return 0
+  fi
+  wins=$(fm_backend_cmux_cli list-windows --json --id-format uuids 2>/dev/null | jq -r '.[]? | .id' 2>/dev/null)
+  if [ -z "$wins" ]; then
+    fm_backend_cmux_cli workspace list --json --id-format uuids 2>/dev/null
+    return 0
+  fi
+  for wid in $wins; do
+    fm_backend_cmux_cli workspace list --json --id-format uuids --window "$wid" 2>/dev/null
+  done | jq -s '{workspaces: (map(.workspaces // []) | add // [])}' 2>/dev/null
+}
+
 # fm_backend_cmux_workspace_id_for_label: the live workspace id whose title
 # equals <label>, or empty. cmux enforces no title uniqueness (finding #6),
 # so this adopts the FIRST match `jq` returns, mirroring herdr's/zellij's own
 # duplicate-check posture.
 fm_backend_cmux_workspace_id_for_label() {  # <label>
   local label=$1
-  fm_backend_cmux_cli workspace list --json --id-format uuids 2>/dev/null \
-    | jq -r --arg want "$label" '.workspaces[]? | select(.title == $want) | .id' 2>/dev/null | head -1
+  fm_backend_cmux_workspaces_json \
+    | jq -r --arg want "$label" '.workspaces[]? | select(.title == $want or .description == $want) | .id' 2>/dev/null | head -1
 }
 
 fm_backend_cmux_surface_id_for_workspace() {  # <workspace_id>
@@ -357,6 +381,13 @@ fm_backend_cmux_create_task() {  # <label> <cwd>
   if [ -n "$dup" ]; then
     echo "error: cmux workspace '$title' already exists" >&2
     return 1
+  fi
+  if fm_cmux_layout_enabled && wsid=$(fm_cmux_layout_create "$title" "$cwd") && [ -n "$wsid" ]; then
+    sfid=$(fm_backend_cmux_surface_id_for_workspace "$wsid")
+    if [ -n "$sfid" ]; then
+      printf '%s %s' "$wsid" "$sfid"
+      return 0
+    fi
   fi
   out=$(fm_backend_cmux_cli new-workspace --name "$title" --cwd "$cwd" --focus false --id-format uuids 2>&1) || {
     echo "error: cmux new-workspace failed for '$title': $out" >&2
@@ -412,7 +443,7 @@ fm_backend_cmux_target_ready() {  # <target> [expected-label]
   fm_backend_cmux_parse_target "$1" || return 1
   if [ -n "$expected_label" ]; then
     expected_title=$(fm_backend_cmux_scoped_title "$expected_label")
-    title=$(fm_backend_cmux_cli workspace list --json --id-format uuids 2>/dev/null | jq -r --arg id "$FM_BACKEND_CMUX_WORKSPACE" '.workspaces[]? | select(.id == $id) | .title' 2>/dev/null)
+    title=$(fm_backend_cmux_workspaces_json | jq -r --arg id "$FM_BACKEND_CMUX_WORKSPACE" '.workspaces[]? | select(.id == $id) | if (.description // "" | startswith("fm-")) then .description else .title end' 2>/dev/null)
     if [ "$title" = "$expected_title" ]; then
       fm_backend_cmux_surface_exists "$FM_BACKEND_CMUX_WORKSPACE" "$FM_BACKEND_CMUX_SURFACE" && return 0
       wsid=$FM_BACKEND_CMUX_WORKSPACE
@@ -641,7 +672,7 @@ fm_backend_cmux_list_live() {
   local wss wsid title sfid home prefix plain
   home=$(fm_backend_cmux_home_label)
   prefix="fm-$home-"
-  wss=$(fm_backend_cmux_cli workspace list --json --id-format uuids 2>/dev/null) || return 0
+  wss=$(fm_backend_cmux_workspaces_json) || return 0
   while IFS=$'\t' read -r wsid title; do
     [ -n "$wsid" ] || continue
     plain=${title#"$prefix"}
@@ -649,5 +680,7 @@ fm_backend_cmux_list_live() {
     sfid=$(fm_backend_cmux_surface_id_for_workspace "$wsid")
     [ -n "$sfid" ] || continue
     printf '%s:%s\tfm-%s\n' "$wsid" "$sfid" "$plain"
-  done < <(printf '%s' "$wss" | jq -r --arg prefix "$prefix" '.workspaces[]? | select(.title | startswith($prefix)) | "\(.id)\t\(.title)"' 2>/dev/null)
+  done < <(printf '%s' "$wss" | jq -r --arg prefix "$prefix" '.workspaces[]?
+      | (if (.title // "" | startswith($prefix)) then .title elif (.description // "" | startswith($prefix)) then .description else empty end) as $t
+      | "\(.id)\t\($t)"' 2>/dev/null)
 }
