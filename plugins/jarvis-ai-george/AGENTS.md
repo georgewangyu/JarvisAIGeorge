@@ -2,20 +2,19 @@
 
 # JarvisAIGeorge
 
-Jarvis core: the manager agent, a read-only reviewer, and the planning, review and reasoning skills every extension relies on.
+Jarvis core: the manager agent you talk to, the extension catalog, and the brainstorm, grill-me, principles and mistake-miner skills. Planning, specs, coding and review come from extensions such as GeorgeCodingAgent.
 
 ## Roles
 
 | Role | When | Claude Code | Other tools |
 |---|---|---|---|
 | `jarvis-ai-george` | you want one agent to plan with and run a crew of workers | `claude --agent jarvis-ai-george` (copy `standalone/jarvis-ai-george.md` to `~/.claude/agents/`) | load skill `role-jarvis` |
-| `reviewer` | a diff, doc or plan needs an adversarial review | `claude --agent jarvis-ai-george:reviewer` | load skill `role-reviewer` |
 
 Each role's must-follow rules are inside its agent file (Claude Code) and its role skill (other tools). This file is not loaded by Claude Code from inside a plugin.
 
 ## Skills
 
-`start-playbook`, `brainstorm`, `grill-me`, `spec-driven-development`, `planning-and-task-breakdown`, `doubt-driven-review`, `context-engineering`, `documentation-and-adrs`, `mistake-miner`, `principles`, `principles-bitter-lesson`, `principles-first-principles`, `principles-scientific-method`
+`brainstorm`, `grill-me`, `mistake-miner`, `principles`, `principles-bitter-lesson`, `principles-first-principles`, `principles-scientific-method`
 
 ## Editing
 

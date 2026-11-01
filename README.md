@@ -42,24 +42,18 @@ The items below are planned direction, not shipped specialist systems.
 - **Private user overlays.** Support local or private-repository adoption layers that can define names, preferences, workflows, and credentials without leaking personal data into the public engine.
 - **Clear runtime terminology.** Move public docs toward workers, managers, and runtime adapters where that language is backed by implemented behavior.
 
-## Install the Jarvis plugins
-
-The Jarvis core plugin (manager agent, read-only reviewer, planning and review skills) and its extensions install with your coding tool's own plugin commands.
-
-Claude Code:
+## Quick start
 
 ```sh
-claude plugin marketplace add georgewangyu/JarvisAIGeorge
-claude plugin install jarvis-ai-george@jarvis-ai-george
-claude plugin install george-coding-agent@jarvis-ai-george
+gh auth login
+git clone https://github.com/georgewangyu/JarvisAIGeorge ~/jarvis
+cd ~/jarvis && claude
 ```
 
-Or in one step from a session: `/plugin install jarvis-ai-george --marketplace georgewangyu/JarvisAIGeorge`.
+Trust the folder, then answer Jarvis in chat: cmux tabs or not, which extensions to install (the coding extension is recommended), and which missing tools to install. Jarvis installs nothing without your yes.
+The full steps, the checklist and troubleshooting for each manual step are in [`docs/install.md`](docs/install.md).
 
-Codex: `codex plugin marketplace add georgewangyu/JarvisAIGeorge`, then install from the plugins directory (skills only).
-Any tool, skills only: `npx skills add https://github.com/georgewangyu/JarvisAIGeorge/tree/main/plugins/jarvis-ai-george/skills`.
-
-The manager agent file, per-worker extensions, the build and the extension format are in [`docs/jarvis-plugins.md`](docs/jarvis-plugins.md).
+The coding extension also works alone ([GeorgeCodingAgent](https://github.com/georgewangyu/GeorgeCodingAgent)). Plugins per tool, the build and the extension format: [`docs/jarvis-plugins.md`](docs/jarvis-plugins.md).
 
 ## Relationship to FirstMate
 
@@ -76,6 +70,7 @@ Backend-specific setup belongs in the linked documentation below.
 ## Documentation
 
 - [`docs/jarvisharness.md`](docs/jarvisharness.md) - public fork baseline, boundary, and adaptation plan.
+- [`docs/install.md`](docs/install.md) - install in three lines, the first-run prompts, checklist and troubleshooting.
 - [`docs/jarvis-plugins.md`](docs/jarvis-plugins.md) - the Jarvis core plugin, extensions, install per tool, and the build.
 - [`docs/architecture.md`](docs/architecture.md) - inherited FirstMate architecture that still describes much of the current codebase.
 - [`docs/configuration.md`](docs/configuration.md) - current configuration surfaces inherited from FirstMate.

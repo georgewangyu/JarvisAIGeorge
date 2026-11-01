@@ -6,8 +6,8 @@
   "plugins": [
     {
       "name": "jarvis-ai-george",
-      "version": "0.1.0",
-      "description": "Jarvis core: the manager agent, a read-only reviewer, and the planning, review and reasoning skills every extension relies on.",
+      "version": "0.2.0",
+      "description": "Jarvis core: the manager agent you talk to, the extension catalog, and the brainstorm, grill-me, principles and mistake-miner skills. Planning, specs, coding and review come from extensions such as GeorgeCodingAgent.",
       "source": {
         "source": "local",
         "path": "./plugins/jarvis-ai-george"
@@ -20,8 +20,8 @@
     },
     {
       "name": "george-coding-agent",
-      "version": "0.1.0",
-      "description": "Coding extension for Jarvis: a coding worker agent plus the build, verify, review and ship skills it uses.",
+      "version": "0.2.0",
+      "description": "Coding agent for Claude Code and other tools: a coding worker, a read-only reviewer, and the plan, build, verify, review and ship skills they use. Works on its own.",
       "source": {
         "source": "url",
         "url": "https://github.com/georgewangyu/GeorgeCodingAgent.git"

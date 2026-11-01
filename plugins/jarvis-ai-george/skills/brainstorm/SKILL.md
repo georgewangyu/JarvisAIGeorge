@@ -5,6 +5,8 @@ description: Turn a rough idea or an open "how should we do X" into a decision. 
 
 # Brainstorm
 
+> `spec-driven-development`, `planning-and-task-breakdown` and `start-playbook` come from the coding extension (GeorgeCodingAgent) when it is installed. Without it, offer the next step in plain words.
+
 Find the real options before committing to one. The goal is a decision the user can defend, not a long list.
 
 ## When to use

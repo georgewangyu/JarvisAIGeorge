@@ -12,6 +12,7 @@ Sources (hand-edited):
 Outputs (generated, never hand-edit):
   <plugin>/agents/<agent>.md             Claude Code plugin agents
   <plugin>/standalone/<agent>.md         agents to copy into ~/.claude/agents/
+  <project_agents_dir>/<agent>.md        optional: the same standalone agents as project agents
   <plugin>/skills/role-*/SKILL.md        role skills for tools without agent files
   <plugin>/skills/extension-catalog/     core only: every known extension
   <plugin>/.claude-plugin/plugin.json    Claude plugin manifest
@@ -42,7 +43,7 @@ CLAUDE_AGENT_FIELDS = [
     "maxTurns", "skills", "mcpServers", "hooks", "memory", "background",
     "omitClaudeMd", "effort", "color", "initialPrompt",
 ]
-BUILD_ONLY_FIELDS = {"rules", "standalone", "role_skill", "summary"}
+BUILD_ONLY_FIELDS = {"rules", "standalone", "role_skill", "summary", "startup"}
 SKILL_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 DASHES = re.compile("[–—]")
 
@@ -52,7 +53,8 @@ class BuildError(Exception):
 
 
 def parse_frontmatter(text, where):
-    """Parse the small YAML subset our sources use: `key: value`, `key: [a, b]`, `- item` lists."""
+    """Parse the small YAML subset our sources use: `key: value`, `key: [a, b]`, `- item` lists,
+    and `key: {...}` with a one-line JSON object (for nested fields such as hooks)."""
     if not text.startswith("---\n"):
         raise BuildError(f"{where}: missing frontmatter")
     try:
@@ -76,6 +78,11 @@ def parse_frontmatter(text, where):
         key, value = key.strip(), value.strip()
         if value == "":
             data[key] = []
+        elif value.startswith("{"):
+            try:
+                data[key] = json.loads(value)
+            except ValueError as e:
+                raise BuildError(f"{where}: bad JSON object for '{key}': {e}")
         elif value.startswith("[") and value.endswith("]"):
             data[key] = [unquote(v.strip()) for v in value[1:-1].split(",") if v.strip()]
         elif value in ("true", "false"):
@@ -99,6 +106,8 @@ def emit_frontmatter(fields):
             lines.extend(f"  - {json.dumps(v)}" for v in value)
         elif isinstance(value, bool):
             lines.append(f"{key}: {'true' if value else 'false'}")
+        elif isinstance(value, dict):
+            lines.append(f"{key}: {json.dumps(value)}")
         else:
             lines.append(f"{key}: {json.dumps(value)}")
     lines.append("---")
@@ -242,8 +251,9 @@ class Repo:
             if key == "skills":
                 value = preload
             if key == "initialPrompt" and value == "auto":
-                value = ("Load these skills with the Skill tool: " + ", ".join(preload)
-                         + ". Then greet the user in one line.") if preload else None
+                extra = (" " + data["startup"].strip()) if data.get("startup") else ""
+                value = ("Load these skills with the Skill tool: " + ", ".join(preload) + "."
+                         + extra + " Then greet the user in one line.") if preload else None
             if value in (None, [], ""):
                 continue
             fields[key] = value
@@ -259,6 +269,9 @@ class Repo:
                 + (start + "\n" if start else "") + self.rules_block(data))
         folder = "standalone" if standalone else "agents"
         self.out(self.prel(folder, f"{name}.md"), text.rstrip() + "\n")
+        project_dir = self.config.get("project_agents_dir")
+        if standalone and project_dir:
+            self.out(f"{project_dir.strip('/')}/{name}.md", text.rstrip() + "\n")
         self.build_role_skill(name, data, body, rel, man, preload)
 
     def build_role_skill(self, name, data, body, rel, man, preload):
@@ -292,7 +305,18 @@ class Repo:
             "# Extension catalog",
             "",
             "Pick the extension and agent whose `dispatch when` matches the work. Launch the worker "
-            "with the line shown. An extension that is not installed is listed with its install line.",
+            "with the line shown.",
+            "",
+            "## Installed or not",
+            "",
+            "Check before routing: `claude plugin list` shows `<plugin>@" + mk + "` for each installed "
+            "extension (in a JarvisAIGeorge home, `bin/jarvis-setup.sh status` lists them too). Mark "
+            "each extension below installed or not installed when you tell the user what you can do.",
+            "",
+            "When the work needs an extension that is not installed, ask in one line, for example "
+            "\"That needs the coding agent from GeorgeCodingAgent. Install it?\" On yes, run its "
+            "install line yourself, then dispatch: a new worker loads it, and the manager does not "
+            "need a restart. Never install without that yes. On no, say what you can do without it.",
             "",
             "Claude Code launch shape: `claude --agent <plugin>:<agent> --settings "
             "'{\"enabledPlugins\":{\"<plugin>@" + mk + "\":true}}'` (the `--settings` part turns the "
@@ -491,6 +515,12 @@ class Repo:
                     rel = str(f.relative_to(self.root))
                     if rel not in self.outputs:
                         stale.append(rel + " (orphan)")
+        project_dir = self.config.get("project_agents_dir")
+        if project_dir and (self.root / project_dir).is_dir():
+            for f in (self.root / project_dir).glob("*.md"):
+                rel = str(f.relative_to(self.root))
+                if rel not in self.outputs and "Generated by tools/jarvis-build.py" in f.read_text():
+                    stale.append(rel + " (orphan)")
         for f in (self.plugin / "skills").glob("role-*/SKILL.md"):
             rel = str(f.relative_to(self.root))
             if rel not in self.outputs:

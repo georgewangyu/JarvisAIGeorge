@@ -3,21 +3,36 @@
   "id": "jarvis-ai-george",
   "name": "JarvisAIGeorge",
   "core": true,
-  "version": "0.1.0",
-  "description": "Jarvis core: the manager agent, a read-only reviewer, and the planning, review and reasoning skills every extension relies on.",
+  "version": "0.2.0",
+  "description": "Jarvis core: the manager agent you talk to, the extension catalog, and the brainstorm, grill-me, principles and mistake-miner skills. Planning, specs, coding and review come from extensions such as GeorgeCodingAgent.",
   "repo": "georgewangyu/JarvisAIGeorge",
   "plugin_path": "plugins/jarvis-ai-george",
   "license": "MIT",
-  "author": {"name": "George Wang", "url": "https://github.com/georgewangyu"},
-  "keywords": ["agents", "skills", "orchestration", "planning", "review"],
+  "author": {
+    "name": "George Wang",
+    "url": "https://github.com/georgewangyu"
+  },
+  "keywords": [
+    "agents",
+    "skills",
+    "orchestration",
+    "manager"
+  ],
   "agents": [
-    {"name": "jarvis-ai-george", "summary": "the manager the user talks to; routes work to extension agents and synthesizes", "dispatch_when": "you want one agent to plan with and run a crew of workers"},
-    {"name": "reviewer", "summary": "fresh-context read-only reviewer that grades an artifact against its contract and a checklist", "dispatch_when": "a diff, doc or plan needs an adversarial review"}
+    {
+      "name": "jarvis-ai-george",
+      "summary": "the manager the user talks to; routes work to extension agents and synthesizes",
+      "dispatch_when": "you want one agent to plan with and run a crew of workers"
+    }
   ],
   "skills": [
-    "start-playbook", "brainstorm", "grill-me", "spec-driven-development", "planning-and-task-breakdown",
-    "doubt-driven-review", "context-engineering", "documentation-and-adrs", "mistake-miner",
-    "principles", "principles-bitter-lesson", "principles-first-principles", "principles-scientific-method"
+    "brainstorm",
+    "grill-me",
+    "mistake-miner",
+    "principles",
+    "principles-bitter-lesson",
+    "principles-first-principles",
+    "principles-scientific-method"
   ],
   "relies_on_core": [],
   "requires": []

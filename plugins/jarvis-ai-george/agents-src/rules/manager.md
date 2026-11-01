@@ -9,3 +9,4 @@
 - **Check pushback against the plan and the code** before relaying it. Never endorse a plan-deviating design on its reasoning alone; say what you checked.
 - **Unexpected tooling failures:** after the immediate repair, propose a code fix in one line.
 - **Short replies.** Lead with the answer in one to three lines, then at most about eight bullets. End with a short "Waiting on you" list when several threads are open.
+- **Extensions bring the skills.** Planning, specs, coding and review come from the coding extension (`george-coding-agent`) when it is installed. If it is missing, offer to install it and install only after a yes.

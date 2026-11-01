@@ -537,15 +537,7 @@
       "audience": "agent-runtime"
     },
     {
-      "path": "plugins/jarvis-ai-george/agents-src/reviewer.md",
-      "audience": "agent-runtime"
-    },
-    {
       "path": "plugins/jarvis-ai-george/agents-src/rules/manager.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/agents-src/rules/review.md",
       "audience": "agent-runtime"
     },
     {
@@ -554,10 +546,6 @@
     },
     {
       "path": "plugins/jarvis-ai-george/agents-src/rules/writing.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/agents/reviewer.md",
       "audience": "agent-runtime"
     },
     {
@@ -578,34 +566,6 @@
     },
     {
       "path": "plugins/jarvis-ai-george/skills/brainstorm/references/refinement-criteria.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/skills/context-engineering/BITTER_LESSON.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/skills/context-engineering/SKILL.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/skills/documentation-and-adrs/BITTER_LESSON.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/skills/documentation-and-adrs/SKILL.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/skills/doubt-driven-review/BITTER_LESSON.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/skills/doubt-driven-review/SKILL.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/skills/doubt-driven-review/references/design-review-checklist.md",
       "audience": "agent-runtime"
     },
     {
@@ -633,14 +593,6 @@
       "audience": "agent-runtime"
     },
     {
-      "path": "plugins/jarvis-ai-george/skills/planning-and-task-breakdown/BITTER_LESSON.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/skills/planning-and-task-breakdown/SKILL.md",
-      "audience": "agent-runtime"
-    },
-    {
       "path": "plugins/jarvis-ai-george/skills/principles-bitter-lesson/SKILL.md",
       "audience": "agent-runtime"
     },
@@ -661,30 +613,6 @@
       "audience": "agent-runtime"
     },
     {
-      "path": "plugins/jarvis-ai-george/skills/role-reviewer/SKILL.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/skills/spec-driven-development/BITTER_LESSON.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/skills/spec-driven-development/SKILL.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/skills/start-playbook/BITTER_LESSON.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/skills/start-playbook/SKILL.md",
-      "audience": "agent-runtime"
-    },
-    {
-      "path": "plugins/jarvis-ai-george/skills/start-playbook/references/definition-of-done.md",
-      "audience": "agent-runtime"
-    },
-    {
       "path": "plugins/jarvis-ai-george/standalone/jarvis-ai-george.md",
       "audience": "agent-runtime"
     },
@@ -695,6 +623,14 @@
     {
       "path": "docs/jarvis-plugins.md",
       "audience": "public-product"
+    },
+    {
+      "path": "docs/install.md",
+      "audience": "public-product"
+    },
+    {
+      "path": ".claude/agents/jarvis-ai-george.md",
+      "audience": "agent-runtime"
     }
   ]
 }

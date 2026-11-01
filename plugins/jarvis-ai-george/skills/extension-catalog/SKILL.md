@@ -7,31 +7,35 @@ description: "Lists every known Jarvis extension: its agents, when to dispatch e
 
 # Extension catalog
 
-Pick the extension and agent whose `dispatch when` matches the work. Launch the worker with the line shown. An extension that is not installed is listed with its install line.
+Pick the extension and agent whose `dispatch when` matches the work. Launch the worker with the line shown.
+
+## Installed or not
+
+Check before routing: `claude plugin list` shows `<plugin>@jarvis-ai-george` for each installed extension (in a JarvisAIGeorge home, `bin/jarvis-setup.sh status` lists them too). Mark each extension below installed or not installed when you tell the user what you can do.
+
+When the work needs an extension that is not installed, ask in one line, for example "That needs the coding agent from GeorgeCodingAgent. Install it?" On yes, run its install line yourself, then dispatch: a new worker loads it, and the manager does not need a restart. Never install without that yes. On no, say what you can do without it.
 
 Claude Code launch shape: `claude --agent <plugin>:<agent> --settings '{"enabledPlugins":{"<plugin>@jarvis-ai-george":true}}'` (the `--settings` part turns the extension on for that worker only). Other tools: tell the worker to load `role-<agent>`.
 
 ## JarvisAIGeorge (`jarvis-ai-george`)
 
-Jarvis core: the manager agent, a read-only reviewer, and the planning, review and reasoning skills every extension relies on.
+Jarvis core: the manager agent you talk to, the extension catalog, and the brainstorm, grill-me, principles and mistake-miner skills. Planning, specs, coding and review come from extensions such as GeorgeCodingAgent.
 
 | Agent | Dispatch when | Claude Code | Other tools |
 |---|---|---|---|
 | `jarvis-ai-george` | you want one agent to plan with and run a crew of workers | `claude --agent jarvis-ai-george` (standalone file, see the install docs) | load `role-jarvis` |
-| `reviewer` | a diff, doc or plan needs an adversarial review | `claude --agent jarvis-ai-george:reviewer` | load `role-reviewer` |
 
-Skills: `start-playbook`, `brainstorm`, `grill-me`, `spec-driven-development`, `planning-and-task-breakdown`, `doubt-driven-review`, `context-engineering`, `documentation-and-adrs`, `mistake-miner`, `principles`, `principles-bitter-lesson`, `principles-first-principles`, `principles-scientific-method`
+Skills: `brainstorm`, `grill-me`, `mistake-miner`, `principles`, `principles-bitter-lesson`, `principles-first-principles`, `principles-scientific-method`
 
 ## GeorgeCodingAgent (`george-coding-agent`)
 
-Coding extension for Jarvis: a coding worker agent plus the build, verify, review and ship skills it uses.
+Coding agent for Claude Code and other tools: a coding worker, a read-only reviewer, and the plan, build, verify, review and ship skills they use. Works on its own.
 
 Install: `claude plugin install george-coding-agent@jarvis-ai-george`
 
 | Agent | Dispatch when | Claude Code | Other tools |
 |---|---|---|---|
 | `coding` | implement, fix, refactor, test or build work in a code repo | `claude --agent george-coding-agent:coding` | load `role-coding` |
+| `reviewer` | a diff, doc or plan needs an adversarial review | `claude --agent george-coding-agent:reviewer` | load `role-reviewer` |
 
-Skills: `incremental-implementation`, `source-driven-development`, `api-and-interface-design`, `frontend-ui-engineering`, `test-driven-development`, `browser-testing`, `debugging-and-error-recovery`, `code-review-and-quality`, `code-simplification`, `security-and-hardening`, `performance-optimization`, `quality-constraints`, `git-workflow-and-versioning`, `ci-cd-and-automation`, `deprecation-and-migration`, `observability-and-instrumentation`, `shipping-and-launch`
-
-Relies on core: `planning-and-task-breakdown`, `spec-driven-development`, `doubt-driven-review`, `context-engineering`, `documentation-and-adrs`, `mistake-miner`, `brainstorm`, `grill-me`, `principles-first-principles`, `principles-scientific-method`
+Skills: `start-playbook`, `spec-driven-development`, `planning-and-task-breakdown`, `doubt-driven-review`, `context-engineering`, `documentation-and-adrs`, `incremental-implementation`, `source-driven-development`, `api-and-interface-design`, `frontend-ui-engineering`, `test-driven-development`, `browser-testing`, `debugging-and-error-recovery`, `code-review-and-quality`, `code-simplification`, `security-and-hardening`, `performance-optimization`, `quality-constraints`, `git-workflow-and-versioning`, `ci-cd-and-automation`, `deprecation-and-migration`, `observability-and-instrumentation`, `shipping-and-launch`

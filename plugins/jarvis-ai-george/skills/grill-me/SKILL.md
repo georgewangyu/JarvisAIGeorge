@@ -5,6 +5,8 @@ description: Interview the user until you know what they actually want, or until
 
 # Grill Me
 
+> `spec-driven-development`, `planning-and-task-breakdown` and `start-playbook` come from the coding extension (GeorgeCodingAgent) when it is installed. Without it, offer the next step in plain words.
+
 Find the gap between what the user asked for and what they want, before anything is built. Facts are yours to find. Decisions are theirs.
 
 ## When to use
