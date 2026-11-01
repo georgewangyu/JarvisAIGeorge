@@ -53,6 +53,8 @@ cd ~/jarvis && claude
 Trust the folder, then answer Jarvis in chat: cmux tabs or not, which extensions to install (the coding extension is recommended), and which missing tools to install. Jarvis installs nothing without your yes.
 The full steps, the checklist and troubleshooting for each manual step are in [`docs/install.md`](docs/install.md).
 
+Codex works too: the same three lines with `codex` in place of `claude`. Trust the folder and its hooks, and Jarvis asks the same questions. What differs (role from a skill, plugins installed on your yes, reviewer read-only by instruction) and a test checklist: [Using Codex](docs/install.md#using-codex).
+
 The coding extension also works alone ([GeorgeCodingAgent](https://github.com/georgewangyu/GeorgeCodingAgent)). Plugins per tool, the build and the extension format: [`docs/jarvis-plugins.md`](docs/jarvis-plugins.md).
 
 ## Relationship to FirstMate

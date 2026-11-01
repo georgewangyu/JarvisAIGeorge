@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# bin/jarvis-manager-write-guard.sh - Claude Code PreToolUse hook for the Jarvis
+# bin/jarvis-manager-write-guard.sh - Claude Code and Codex PreToolUse hook for the Jarvis
 # manager session: refuse MCP tools that look like writes, so the manager
 # dispatches a worker instead of changing a live system from its own thread.
 #
-# Wiring: the manager agent's frontmatter `hooks` (agents-src/jarvis-ai-george.md)
+# Wiring: Claude Code, the manager agent's frontmatter `hooks` (agents-src/jarvis-ai-george.md)
 # runs this for matcher `mcp__.*`, so it is active only while the manager agent
-# is the session. Workers never load it.
+# is the session. Codex: the home's .codex/hooks.json PreToolUse entry (matcher
+# ^mcp__) runs it for the primary session; Codex worker launches disable hooks.
+# Both tools take the same deny JSON. Workers never load it.
 #
 # Input: the hook JSON on stdin. Only tool_name and, when present, a top-level
 # string field named action, operation, method or mode in tool_input are read.

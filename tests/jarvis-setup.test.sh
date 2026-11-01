@@ -2,7 +2,8 @@
 # tests/jarvis-setup.test.sh - unit tests for bin/jarvis-setup.sh: the
 # first-run hook speaks only when setup is incomplete, the backend choice
 # writes the right config, plugin detection accepts the trust-loaded cache,
-# and the update check stays quiet when turned off. No network, no installs.
+# the update check stays quiet when turned off, and the Claude and Codex
+# install commands and installed checks are right (stub CLIs). No network, no installs.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -13,7 +14,7 @@ SETUP="$ROOT/bin/jarvis-setup.sh"
 
 run() {  # <home> <claude-dir> <args...>
   local h=$1 c=$2; shift 2
-  FM_HOME="$h" CLAUDE_CONFIG_DIR="$c" "$SETUP" "$@"
+  JARVIS_HARNESS=claude FM_HOME="$h" CLAUDE_CONFIG_DIR="$c" "$SETUP" "$@"
 }
 
 test_backend_choice() {
@@ -57,6 +58,85 @@ test_update_check_off() {
   pass "jarvis-setup: update check is off with config/update-check"
 }
 
+# A stub plugin CLI on PATH: records every call, lists no marketplaces.
+make_stub() {  # <dir> <name>
+  mkdir -p "$1"
+  cat > "$1/$2" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$1/$2.calls"
+exit 0
+STUB
+  chmod +x "$1/$2"
+}
+
+test_codex_install_commands() {
+  local h="$TMP_ROOT/codex" x="$TMP_ROOT/codex-home" bin="$TMP_ROOT/codex-bin" out calls
+  mkdir -p "$h" "$x"
+  make_stub "$bin" codex
+  out=$(PATH="$bin:$PATH" JARVIS_HARNESS=codex CODEX_HOME="$x" FM_HOME="$h" "$SETUP" extensions george-coding-agent) \
+    || fail "codex extensions install must succeed: '$out'"
+  calls=$(cat "$bin/codex.calls")
+  printf '%s\n' "$calls" | grep -qx 'plugin marketplace list' || fail "codex: must check the marketplace list first: '$calls'"
+  printf '%s\n' "$calls" | grep -q '^plugin marketplace add ' || fail "codex: must add the marketplace when missing: '$calls'"
+  printf '%s\n' "$calls" | grep -qx 'plugin add george-coding-agent@jarvis-ai-george' \
+    || fail "codex: must install with codex plugin add <plugin>@jarvis-ai-george: '$calls'"
+  printf '%s\n' "$calls" | grep -q 'plugin install' && fail "codex: must not use the Claude install verb: '$calls'"
+  grep -qx george-coding-agent "$h/config/extensions" || fail "codex: the choice must be recorded"
+  : > "$bin/codex.calls"
+  PATH="$bin:$PATH" JARVIS_HARNESS=codex CODEX_HOME="$x" FM_HOME="$h" "$SETUP" plugins >/dev/null || fail "codex plugins must succeed"
+  grep -qx 'plugin add jarvis-ai-george@jarvis-ai-george' "$bin/codex.calls" || fail "codex: plugins must add the core plugin"
+  [ "$(PATH="$bin:$PATH" JARVIS_HARNESS=codex "$SETUP" harness)" = codex ] || fail "JARVIS_HARNESS=codex must select codex"
+  pass "jarvis-setup: under Codex, plugins and extensions run codex plugin marketplace add and codex plugin add"
+}
+
+test_claude_install_commands() {
+  local h="$TMP_ROOT/claude-cli" c="$TMP_ROOT/claude-cli-dir" bin="$TMP_ROOT/claude-bin"
+  mkdir -p "$h" "$c"
+  make_stub "$bin" claude
+  PATH="$bin:$PATH" JARVIS_HARNESS=claude CLAUDE_CONFIG_DIR="$c" FM_HOME="$h" "$SETUP" plugins >/dev/null || fail "claude plugins must succeed"
+  grep -qx 'plugin install jarvis-ai-george@jarvis-ai-george --scope user' "$bin/claude.calls" \
+    || fail "claude: plugins must keep claude plugin install --scope user: '$(cat "$bin/claude.calls")'"
+  pass "jarvis-setup: under Claude Code, plugins still runs claude plugin install"
+}
+
+test_installed_from_either_marketplace() {
+  local h="$TMP_ROOT/either" c="$TMP_ROOT/either-claude" x="$TMP_ROOT/either-codex" out
+  mkdir -p "$h/config" "$c/plugins" "$x/plugins/cache/george-coding-agent/george-coding-agent/0.2.0" \
+    "$x/plugins/cache/jarvis-ai-george/jarvis-ai-george/local"
+  echo george-coding-agent > "$h/config/extensions"
+  printf '{"plugins":{"jarvis-ai-george@jarvis-ai-george":[{}],"george-coding-agent@george-coding-agent":[{}]}}\n' \
+    > "$c/plugins/installed_plugins.json"
+  out=$(JARVIS_HARNESS=claude FM_HOME="$h" CLAUDE_CONFIG_DIR="$c" "$SETUP" status)
+  printf '%s' "$out" | grep -q '^ok: extensions george-coding-agent' \
+    || fail "claude: an extension installed from its own marketplace must count as installed: '$out'"
+  printf '%s' "$out" | grep -q '^ok: plugins jarvis-ai-george' || fail "claude: core plugin must count as installed"
+  out=$(JARVIS_HARNESS=codex FM_HOME="$h" CODEX_HOME="$x" "$SETUP" status)
+  printf '%s' "$out" | grep -q '^ok: harness codex' || fail "codex: status must name the harness: '$out'"
+  printf '%s' "$out" | grep -q '^ok: extensions george-coding-agent' \
+    || fail "codex: the plugin cache under CODEX_HOME must count as installed: '$out'"
+  printf '%s' "$out" | grep -q '^ok: plugins jarvis-ai-george' || fail "codex: core plugin cache must count as installed"
+  out=$(JARVIS_HARNESS=codex FM_HOME="$h" CODEX_HOME="$TMP_ROOT/empty-codex" "$SETUP" status)
+  printf '%s' "$out" | grep -q 'MISSING plugins jarvis-ai-george' || fail "codex: a Claude install must not count for Codex: '$out'"
+  pass "jarvis-setup: a plugin counts as installed from either marketplace, per tool"
+}
+
+test_codex_sessionstart_hook() {
+  local cmd h="$TMP_ROOT/codex-hook" out
+  command -v jq >/dev/null 2>&1 || { pass "jarvis-setup: codex SessionStart hook (skipped, no jq)"; return; }
+  mkdir -p "$h"
+  cmd=$(jq -r '[.hooks.SessionStart[].hooks[].command | select(contains("jarvis-setup.sh"))][0] // empty' "$ROOT/.codex/hooks.json")
+  [ -n "$cmd" ] || fail ".codex/hooks.json must run bin/jarvis-setup.sh detect at SessionStart"
+  out=$(printf '%s' '{"hook_event_name":"SessionStart"}' \
+    | (cd "$ROOT" && FM_HOME="$h" CODEX_HOME="$TMP_ROOT/codex-hook-home" bash -c "$cmd"))
+  printf '%s' "$out" | grep -q '^JARVIS_FIRST_RUN: ' || fail "the codex SessionStart hook must print the first-run line: '$out'"
+  printf '%s' "$out" | grep -q 'plugins: jarvis-ai-george' || fail "under Codex the hook must read the Codex plugin cache: '$out'"
+  pass "jarvis-setup: the tracked Codex SessionStart hook runs detect for the Codex harness"
+}
+
 test_backend_choice
 test_detect_names_gaps
 test_update_check_off
+test_codex_install_commands
+test_claude_install_commands
+test_installed_from_either_marketplace
+test_codex_sessionstart_hook

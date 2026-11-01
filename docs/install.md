@@ -11,6 +11,7 @@ cd ~/jarvis && claude
 
 Plain `claude` in the folder starts Jarvis (the repo's `.claude/settings.json` sets `"agent": "jarvis-ai-george"`).
 `claude --agent jarvis-ai-george` does the same.
+Using Codex instead: the same three lines with `codex` in place of `claude`. See [Using Codex](#using-codex).
 
 ## What happens on first start
 
@@ -27,7 +28,7 @@ On later starts Jarvis is quiet unless something needs a call (a missing piece, 
 
 ## Requirements
 
-- Claude Code, logged in.
+- Claude Code or Codex, logged in.
 - Git and the GitHub CLI (`gh auth login` done).
 - macOS or Linux. Homebrew on macOS for the optional tools (`jq`, cmux).
 
@@ -69,11 +70,70 @@ In the home, the manager runs a PreToolUse hook (`bin/jarvis-manager-write-guard
 Reads and searches pass. Edit `config/manager-write-words` (one word per line) to change the list; an empty file turns the guard off.
 Workers do not run it.
 
+## Using Codex
+
+```sh
+gh auth login
+git clone https://github.com/georgewangyu/JarvisAIGeorge ~/jarvis
+cd ~/jarvis && codex
+```
+
+Use a recent Codex CLI: `codex plugin add` needs 0.122 or later, and FirstMate's Codex manager checks were verified on 0.142.
+Log in with the account you want this machine to use (`codex login`).
+
+### First start with Codex
+
+| # | Prompt | Who asks | What to answer |
+|---|---|---|---|
+| 1 | Do you trust the contents of this directory? | Codex | Yes. It loads `AGENTS.md` and the folder's `.codex/` hooks |
+| 2 | Hooks need review (new or changed hooks) | Codex | Review and trust them (or `/hooks` later). They run session start, the setup check, the write guard and the turn-end guard. Declined: Jarvis still runs the setup check itself, but there is no write guard |
+| 3 | Use cmux tabs, which extensions, which tools | Jarvis | The same one form as on Claude |
+| 4 | Approve a command (network or writes outside the folder) | Codex | Approve `codex plugin marketplace add`, `codex plugin add` and each tool install you agreed to |
+| 5 | Restart Codex here | Jarvis | `/quit`, then `codex` again, so the new plugin skills load |
+
+### What differs from Claude Code
+
+- **Jarvis role.** Codex has no agent files. `AGENTS.md` tells the session that it is Jarvis and to read `role-jarvis` and the extension catalog at start.
+- **Setup check.** Codex runs `bin/jarvis-setup.sh detect` from `.codex/hooks.json` once its hooks are trusted; without them Jarvis runs it itself. `jarvis-setup.sh` detects Codex and uses `codex plugin marketplace add georgewangyu/JarvisAIGeorge` and `codex plugin add <plugin>@jarvis-ai-george`.
+- **Plugins.** Nothing loads on folder trust: Jarvis offers the core plugin and the coding extension, and installs only after your yes. Codex keeps plugins in `~/.codex/plugins/cache/`; an extension installed from its own marketplace (`@george-coding-agent`) counts too. Update with `codex plugin marketplace upgrade jarvis-ai-george`; there is no auto-update setting to choose.
+- **Workers.** A Codex worker takes its role from a skill named on its brief's first line (`$role-coding`, `$role-reviewer`); there is no `--agent`. Worker launches turn Codex hooks off, so a worker never stops on the hook review.
+- **Reviewer read-only.** Codex cannot enforce the reviewer's read-only tools. The `role-reviewer` skill says so and the reviewer follows it by instruction. A fleet reviewer keeps the normal sandbox because it must write its status and report files; a standalone review (`codex exec --sandbox read-only 'Load $role-reviewer first. ...'`) is enforced, and the coding role's review loop uses that form.
+- **Write guard.** The same guard runs as a Codex PreToolUse hook on `mcp__` tools in the manager session. It needs the hooks trusted (prompt 2).
+- **Waiting.** Jarvis waits on workers in short foreground checkpoints (about 3 minutes), so it can still answer you between them.
+- **cmux.** The board and tab colors cover Codex workers by polling. There is no sidebar pill for a Codex worker (it runs no hooks); the pill is Claude only.
+
+### Codex troubleshooting
+
+- **Plain Codex instead of Jarvis.** Check you started `codex` in the clone, then say "Read the Jarvis section of AGENTS.md and act as Jarvis."
+- **No setup line at start.** The hooks were not trusted. Run `/hooks` and trust them, or ask Jarvis to run `bin/jarvis-setup.sh status`.
+- **`codex plugin` is unknown.** Upgrade the Codex CLI (older releases used `codex marketplace add` and had no `codex plugin add`).
+- **Marketplace add or plugin add fails.** It needs network: approve the command when Codex asks, and check `gh auth status`. By hand: `codex plugin marketplace add georgewangyu/JarvisAIGeorge`, then `codex plugin add jarvis-ai-george@jarvis-ai-george` and `codex plugin add george-coding-agent@jarvis-ai-george`.
+- **Skills not found after install.** Start a new Codex session in the folder.
+- **Wrong harness detected.** `bin/jarvis-setup.sh harness` prints the tool it sees; force it with `JARVIS_HARNESS=codex bin/jarvis-setup.sh status`.
+
+### Codex test script (run on the laptop, report back)
+
+Run in a throwaway cmux workspace, from a fresh clone. Report each step as pass or fail with the exact output or error.
+
+1. `codex --version` and `bin/jarvis-setup.sh harness` (from inside the Codex session, through Jarvis): expect a version of 0.122 or later and `codex`.
+2. Start `codex` in `~/jarvis`. Record every prompt in order, with its wording.
+3. After trusting the hooks, does the first reply mention setup (the `JARVIS_FIRST_RUN:` line) without being asked? Does Jarvis say it is Jarvis and list the coding extension as not installed?
+4. Answer the form: cmux yes, coding extension yes, tools as you like. Expect `codex plugin marketplace add ...` and `codex plugin add jarvis-ai-george@jarvis-ai-george` and `codex plugin add george-coding-agent@jarvis-ai-george`, each after your yes.
+5. `/quit`, `codex` again. `codex plugin list` shows both plugins `installed, enabled`. `bin/jarvis-setup.sh status` prints only `ok:` lines (tools may stay missing if declined).
+6. Ask "What agents can you dispatch?": expect `coding` and `reviewer`, both installed, with the Codex launch shape (`$role-coding` in the brief).
+7. Dispatch a tiny task in a throwaway repo under `projects/` (for example a `hello.sh`). Expect a worker tab under **Jarvis: Workers**, the board coloring it, no pill, and a result relayed by Jarvis.
+8. Ask for a review of that change. Expect a reviewer worker that loads `$role-reviewer` and edits nothing (`git status` clean in that repo afterwards).
+9. Ask Jarvis to post a message or update a ticket through an MCP tool, if one is configured. Expect the write guard to block it.
+10. In the coding worker or a plain `codex` in a repo: `codex exec --sandbox read-only 'Load $role-reviewer first. Review the last commit.'` returns findings and changes nothing.
+
+Report: the prompt list from step 2, pass or fail per step, and any error text.
+
 ## Without the clone
 
 The plugins also install on their own:
 
 - Coding agent only: `claude plugin marketplace add georgewangyu/GeorgeCodingAgent`, `claude plugin install george-coding-agent@george-coding-agent`, `claude --agent george-coding-agent:coding`.
+  Codex: `codex plugin marketplace add georgewangyu/GeorgeCodingAgent`, `codex plugin add george-coding-agent@george-coding-agent`, then start with "Load `$role-coding` first".
 - Manager file anywhere: copy `plugins/jarvis-ai-george/standalone/jarvis-ai-george.md` to `~/.claude/agents/`. Without a home it has no fleet tooling, setup check or write guard.
 
 [`jarvis-plugins.md`](jarvis-plugins.md) has the per-tool details.

@@ -11,17 +11,17 @@ Pick the extension and agent whose `dispatch when` matches the work. Launch the 
 
 ## Installed or not
 
-Check before routing: `claude plugin list` shows `<plugin>@jarvis-ai-george` for each installed extension (in a JarvisAIGeorge home, `bin/jarvis-setup.sh status` lists them too). Mark each extension below installed or not installed when you tell the user what you can do.
+Check before routing. Claude Code: `claude plugin list` shows `<plugin>@jarvis-ai-george`, or `<plugin>@<plugin>` when the extension was installed from its own marketplace; either counts. Codex: `codex plugin list` shows the plugin as `installed, enabled` under either marketplace. In a JarvisAIGeorge home, `bin/jarvis-setup.sh status` checks the current tool. Mark each extension below installed or not installed when you tell the user what you can do.
 
 When the work needs an extension that is not installed, ask in one line, for example "That needs the coding agent from GeorgeCodingAgent. Install it?" On yes, run its install line yourself, then dispatch: a new worker loads it, and the manager does not need a restart. Never install without that yes. On no, say what you can do without it.
 
-Claude Code launch shape: `claude --agent <plugin>:<agent> --settings '{"enabledPlugins":{"<plugin>@jarvis-ai-george":true}}'` (the `--settings` part turns the extension on for that worker only). Other tools: tell the worker to load `role-<agent>`.
+Claude Code launch shape: `claude --agent <plugin>:<agent> --settings '{"enabledPlugins":{"<plugin>@jarvis-ai-george":true}}'` (the `--settings` part turns the extension on for that worker only). Codex has no agent files: start the worker with a brief whose first line is "Load `$role-<agent>` first" (from a home, `bin/fm-spawn.sh` without `--agent`). Other tools: tell the worker to load `role-<agent>`.
 
 ## JarvisAIGeorge (`jarvis-ai-george`)
 
 Jarvis core: the manager agent you talk to, the extension catalog, and the brainstorm, grill-me, principles and mistake-miner skills. Planning, specs, coding and review come from extensions such as GeorgeCodingAgent.
 
-| Agent | Dispatch when | Claude Code | Other tools |
+| Agent | Dispatch when | Claude Code | Codex and other tools |
 |---|---|---|---|
 | `jarvis-ai-george` | you want one agent to plan with and run a crew of workers | `claude --agent jarvis-ai-george` (standalone file, see the install docs) | load `role-jarvis` |
 
@@ -31,9 +31,9 @@ Skills: `brainstorm`, `grill-me`, `mistake-miner`, `principles`, `principles-bit
 
 Coding agent for Claude Code and other tools: a coding worker, a read-only reviewer, and the plan, build, verify, review and ship skills they use. Works on its own.
 
-Install: `claude plugin install george-coding-agent@jarvis-ai-george`
+Install: Claude Code `claude plugin install george-coding-agent@jarvis-ai-george`; Codex `codex plugin add george-coding-agent@jarvis-ai-george` (after `codex plugin marketplace add georgewangyu/JarvisAIGeorge`)
 
-| Agent | Dispatch when | Claude Code | Other tools |
+| Agent | Dispatch when | Claude Code | Codex and other tools |
 |---|---|---|---|
 | `coding` | implement, fix, refactor, test or build work in a code repo | `claude --agent george-coding-agent:coding` | load `role-coding` |
 | `reviewer` | a diff, doc or plan needs an adversarial review | `claude --agent george-coding-agent:reviewer` | load `role-reviewer` |

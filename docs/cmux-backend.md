@@ -139,6 +139,7 @@ Without it the adapter behaves exactly as described above.
   With the layout on, lookups read every cmux window instead of only the caller's, so a teardown or peek run from another window still finds the task.
 - **Sidebar state for Claude.** The core plugin's `hooks/jarvis-sidebar.sh` sets a `jarvis` pill on its own workspace: `working` on a prompt or tool call, `needs you` on a permission prompt, `done` when a turn ends, cleared at session end.
   Idle reminders are ignored, and it is a no-op outside cmux.
+  Codex workers get no pill: their launches turn Codex hooks off, so the board's polling is their only tab state (colors and counts).
 - **Wake and cleanup** are unchanged: the watcher wakes the manager on a worker's status event, and `bin/fm-teardown.sh` closes the worker tab only after its work has landed.
 
 Gate evidence and what is untested (Codex, secondmates): `docs/verification/runtime-backends.md#cmux`.

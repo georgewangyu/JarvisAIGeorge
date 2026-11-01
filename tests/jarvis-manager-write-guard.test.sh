@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # tests/jarvis-manager-write-guard.test.sh - unit tests for the Jarvis manager
 # write guard (bin/jarvis-manager-write-guard.sh): MCP writes are denied, reads
-# and non-MCP tools pass, the word list is editable, and the guard can be off.
+# and non-MCP tools pass, the word list is editable, the guard can be off, and
+# the tracked Codex hook entry wires it for the Codex manager session.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -60,6 +61,21 @@ test_word_list_editable() {
   pass "write guard: config/manager-write-words replaces the list; empty or off disables"
 }
 
+test_codex_hook_entry() {
+  local cmd out
+  command -v jq >/dev/null 2>&1 || { pass "write guard: codex hook entry (skipped, no jq)"; return; }
+  cmd=$(jq -r '.hooks.PreToolUse[] | select(.matcher == "^mcp__") | .hooks[0].command' "$ROOT/.codex/hooks.json")
+  [ -n "$cmd" ] || fail ".codex/hooks.json must run the write guard for ^mcp__ tools"
+  out=$(printf '%s' '{"hook_event_name":"PreToolUse","tool_name":"mcp__chat__post_message","tool_input":{}}' \
+    | (cd "$ROOT" && FM_HOME="$TMP_ROOT/default" bash -c "$cmd"))
+  denies "$out" || fail "the codex hook entry must deny an MCP write: got '$out'"
+  out=$(printf '%s' '{"hook_event_name":"PreToolUse","tool_name":"mcp__docs__search","tool_input":{}}' \
+    | (cd "$ROOT" && FM_HOME="$TMP_ROOT/default" bash -c "$cmd"))
+  [ -z "$out" ] || fail "the codex hook entry must allow a read: got '$out'"
+  pass "write guard: the tracked Codex PreToolUse entry denies MCP writes and allows reads"
+}
+
 test_writes_denied
 test_reads_allowed
 test_word_list_editable
+test_codex_hook_entry

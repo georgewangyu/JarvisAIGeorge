@@ -54,11 +54,14 @@ Plugins update by version: bump `version` in the manifest when a change should r
 
 ```sh
 codex plugin marketplace add georgewangyu/JarvisAIGeorge
+codex plugin add jarvis-ai-george@jarvis-ai-george
+codex plugin add george-coding-agent@jarvis-ai-george
 ```
 
-Then install `jarvis-ai-george` and `george-coding-agent` from the Codex plugins directory.
-Codex gets the skills only. A Codex worker takes its role from a role skill: say "load role-coding" (or `role-jarvis`, `role-reviewer`) in its brief.
-The Codex path is generated but not yet tested end to end.
+In a JarvisAIGeorge home, `bin/jarvis-setup.sh plugins` and `extensions george-coding-agent` run these after your yes; [Using Codex](install.md#using-codex) has the full flow.
+Codex gets the skills. A Codex worker takes its role from a role skill on its brief's first line: "Load `$role-coding` first" (or `$role-jarvis`, `$role-reviewer`).
+The reviewer's read-only tools are not enforced in Codex; `codex exec --sandbox read-only` enforces them for a standalone review.
+The manifests are validated against Codex's schema in CI (`tests/jarvis-codex-manifests.test.sh`); the Codex path is not yet run end to end.
 
 ## Install: any tool, skills only
 

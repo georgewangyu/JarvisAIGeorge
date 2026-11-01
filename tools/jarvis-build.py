@@ -281,10 +281,22 @@ class Repo:
                 f"files (Codex and others), or when a brief says load {skill}.")
         fields = {"name": skill, "description": desc}
         load = ""
+        tools = data.get("tools", "")
+        if isinstance(tools, list):
+            tools = ", ".join(tools)
+        writers = ("Edit", "Write", "MultiEdit", "NotebookEdit", "Bash")
+        if tools and not any(w in tools for w in writers):
+            load += ("## Read-only\n\nThis role is read-only: read and search, never edit, write, "
+                     "commit, or run a command that changes files or state, apart from the status and "
+                     "report files your brief names. Claude Code enforces it "
+                     f"with the agent's tools ({tools}). Codex and other tools cannot, so follow it "
+                     "yourself. Outside a fleet, `codex --sandbox read-only` enforces it; a fleet "
+                     "worker keeps the normal sandbox because it must write its status and report "
+                     "files.\n\n")
         if preload:
             bare = [p.split(":", 1)[1] for p in preload]
             load = ("## Load first\n\nLoad these skills before your first action: "
-                    + ", ".join(f"`{b}`" for b in bare) + ".\n\n")
+                    + ", ".join(f"`{b}`" for b in bare) + ".\n\n") + load
         text = (emit_frontmatter(fields)
                 + f"\n<!-- {GENERATED_NOTE.format(src=rel)} -->\n\n"
                 + f"# Role: {name}\n\n" + load + body.rstrip() + "\n\n" + self.rules_block(data))
@@ -309,9 +321,12 @@ class Repo:
             "",
             "## Installed or not",
             "",
-            "Check before routing: `claude plugin list` shows `<plugin>@" + mk + "` for each installed "
-            "extension (in a JarvisAIGeorge home, `bin/jarvis-setup.sh status` lists them too). Mark "
-            "each extension below installed or not installed when you tell the user what you can do.",
+            "Check before routing. Claude Code: `claude plugin list` shows `<plugin>@" + mk + "`, or "
+            "`<plugin>@<plugin>` when the extension was installed from its own marketplace; either "
+            "counts. Codex: `codex plugin list` shows the plugin as `installed, enabled` under either "
+            "marketplace. In a JarvisAIGeorge home, `bin/jarvis-setup.sh status` checks the current "
+            "tool. Mark each extension below installed or not installed when you tell the user what "
+            "you can do.",
             "",
             "When the work needs an extension that is not installed, ask in one line, for example "
             "\"That needs the coding agent from GeorgeCodingAgent. Install it?\" On yes, run its "
@@ -320,14 +335,18 @@ class Repo:
             "",
             "Claude Code launch shape: `claude --agent <plugin>:<agent> --settings "
             "'{\"enabledPlugins\":{\"<plugin>@" + mk + "\":true}}'` (the `--settings` part turns the "
-            "extension on for that worker only). Other tools: tell the worker to load `role-<agent>`.",
+            "extension on for that worker only). Codex has no agent files: start the worker with a "
+            "brief whose first line is \"Load `$role-<agent>` first\" (from a home, `bin/fm-spawn.sh` "
+            "without `--agent`). Other tools: tell the worker to load `role-<agent>`.",
             "",
         ]
         for ext in exts:
             lines += [f"## {ext['name']} (`{ext['id']}`)", "", ext.get("description", ""), ""]
             if not ext.get("core"):
-                lines += [f"Install: `claude plugin install {ext['id']}@{mk}`", ""]
-            lines += ["| Agent | Dispatch when | Claude Code | Other tools |", "|---|---|---|---|"]
+                lines += [f"Install: Claude Code `claude plugin install {ext['id']}@{mk}`; Codex "
+                          f"`codex plugin add {ext['id']}@{mk}` (after `codex plugin marketplace add "
+                          f"{self.manifest.get('repo', '')}`)", ""]
+            lines += ["| Agent | Dispatch when | Claude Code | Codex and other tools |", "|---|---|---|---|"]
             own = self.agent_sources() if ext is self.manifest else {}
             for a in ext.get("agents", []):
                 data = own.get(a["name"], ({}, "", ""))[0]

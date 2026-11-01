@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "george-coding-agent",
   "name": "GeorgeCodingAgent",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Coding agent for Claude Code and other tools: a coding worker, a read-only reviewer, and the plan, build, verify, review and ship skills they use. Works on its own.",
   "repo": "georgewangyu/GeorgeCodingAgent",
   "license": "MIT",

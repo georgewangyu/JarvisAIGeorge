@@ -28,10 +28,11 @@ jobs:
           set -eu
           python3 -m unittest discover -s plugins/jarvis-ai-george/skills/principles-bitter-lesson/tests
           python3 -m unittest discover -s plugins/jarvis-ai-george/skills/mistake-miner/tests
-      - name: Setup check and manager write guard
+      - name: Setup check, manager write guard, Codex manifests
         run: |
           set -eu
           bash tests/jarvis-setup.test.sh
           bash tests/jarvis-manager-write-guard.test.sh
+          bash tests/jarvis-codex-manifests.test.sh
       - name: Scrub (public marker list)
         run: tools/scrub-lint/scripts/scrub-lint check --lists public

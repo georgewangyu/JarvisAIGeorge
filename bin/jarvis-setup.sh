@@ -9,6 +9,8 @@
 #                                       Prints one JARVIS_FIRST_RUN: line when
 #                                       anything is missing, nothing otherwise.
 #   bin/jarvis-setup.sh status          one line per item: ok or MISSING with the fix
+#   bin/jarvis-setup.sh harness         print the tool this session runs in:
+#                                       claude or codex (JARVIS_HARNESS overrides)
 #   bin/jarvis-setup.sh backend cmux|tmux|auto
 #                                       record the session backend choice:
 #                                       cmux writes config/backend=cmux and
@@ -17,9 +19,11 @@
 #                                       config/backend=tmux; auto leaves the
 #                                       backend to runtime detection
 #   bin/jarvis-setup.sh plugins         add this repo's plugin marketplace and
-#                                       install the core plugin (fallback when
-#                                       folder trust did not load it; run only
-#                                       after the user approves)
+#                                       install the core plugin with the current
+#                                       tool's CLI (claude plugin install, or
+#                                       codex plugin add). Claude: fallback when
+#                                       folder trust did not load it. Run only
+#                                       after the user approves
 #   bin/jarvis-setup.sh extensions <id>...|none
 #                                       install the extensions the user approved
 #                                       (recommended: george-coding-agent) and
@@ -31,7 +35,15 @@
 #   bin/jarvis-setup.sh plugin-autoupdate on|off
 #                                       let Claude Code update the marketplace and
 #                                       its plugins at startup (written to the
-#                                       home's .claude/settings.local.json)
+#                                       home's .claude/settings.local.json;
+#                                       Claude only, Codex has no such setting)
+#
+# Harness: Claude Code and Codex are supported. The harness is JARVIS_HARNESS
+# when set to claude or codex, else bin/fm-harness.sh's process-tree answer,
+# else whichever CLI is on PATH (claude first). Plugin state is read from that
+# tool's own home: CLAUDE_CONFIG_DIR (default ~/.claude) or CODEX_HOME (default
+# ~/.codex). A plugin counts as installed from either marketplace,
+# jarvis-ai-george or the extension's own (george-coding-agent).
 #
 # Nothing here installs software on its own: detect, status and update-check
 # only read; every other verb is run by the manager after the user approves.
@@ -45,7 +57,10 @@ ROOT=$(dirname "$SCRIPT_DIR")
 HOME_DIR="${FM_HOME:-$ROOT}"
 CONFIG="$HOME_DIR/config"
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CODEX_DIR="${CODEX_HOME:-$HOME/.codex}"
 MARKET=jarvis-ai-george
+# Marketplaces a plugin may have been installed from: ours, or the extension's own repo.
+MARKETS="jarvis-ai-george george-coding-agent"
 PLUGINS="jarvis-ai-george"
 # Known extensions offered at first run; the user picks, nothing installs on its own.
 EXTENSIONS="george-coding-agent"
@@ -63,12 +78,49 @@ backend_choice() {  # prints cmux|tmux|auto|unset
   fi
 }
 
-# Folder trust loads an enabled same-repo plugin into the cache without an
-# installed_plugins.json entry, so either counts.
+harness() {  # prints claude|codex
+  case "${JARVIS_HARNESS:-}" in claude|codex) printf '%s' "$JARVIS_HARNESS"; return ;; esac
+  local h
+  h=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || true)
+  case "$h" in claude|codex) printf '%s' "$h"; return ;; esac
+  if command -v claude >/dev/null 2>&1; then printf claude
+  elif command -v codex >/dev/null 2>&1; then printf codex
+  else printf claude
+  fi
+}
+HARNESS=$(harness)
+
+# Claude: folder trust loads an enabled same-repo plugin into the cache without
+# an installed_plugins.json entry, so either counts. Codex: `codex plugin add`
+# installs into plugins/cache/<marketplace>/<plugin>/.
 plugin_installed() {  # <plugin>
-  local f="$CLAUDE_DIR/plugins/installed_plugins.json"
-  { [ -f "$f" ] && grep -q "\"$1@$MARKET\"" "$f"; } \
-    || [ -d "$CLAUDE_DIR/plugins/cache/$MARKET/$1" ]
+  local m f="$CLAUDE_DIR/plugins/installed_plugins.json"
+  for m in $MARKETS; do
+    if [ "$HARNESS" = codex ]; then
+      [ -d "$CODEX_DIR/plugins/cache/$m/$1" ] && return 0
+    else
+      { [ -f "$f" ] && grep -q "\"$1@$m\"" "$f"; } && return 0
+      [ -d "$CLAUDE_DIR/plugins/cache/$m/$1" ] && return 0
+    fi
+  done
+  return 1
+}
+
+# The plugin CLI of the current harness; only these verbs differ.
+need_cli() { command -v "$HARNESS" >/dev/null 2>&1 || die "$HARNESS is not on PATH"; }
+
+ensure_marketplace() {
+  "$HARNESS" plugin marketplace list 2>/dev/null | grep -q "$MARKET" && return 0
+  "$HARNESS" plugin marketplace add "$(marketplace_source)" \
+    || die "marketplace add $(marketplace_source) failed (help: $DOC#plugins-did-not-install)"
+}
+
+install_plugin() {  # <plugin>
+  if [ "$HARNESS" = codex ]; then
+    codex plugin add "$1@$MARKET"
+  else
+    claude plugin install "$1@$MARKET" --scope user
+  fi
 }
 
 extensions_chosen() { [ -f "$CONFIG/extensions" ]; }
@@ -133,6 +185,7 @@ cmd_detect() {
 
 cmd_status() {
   local b p t c
+  echo "ok: harness $HARNESS"
   b=$(backend_choice)
   if [ "$b" = unset ]; then
     echo "JARVIS_SETUP: MISSING backend choice (ask the user: use cmux tabs? then bin/jarvis-setup.sh backend cmux|tmux|auto)"
@@ -199,17 +252,14 @@ marketplace_source() {
 }
 
 cmd_plugins() {
-  command -v claude >/dev/null 2>&1 || die "claude is not on PATH"
-  local src p
-  src=$(marketplace_source)
-  if ! claude plugin marketplace list 2>/dev/null | grep -q "$MARKET"; then
-    claude plugin marketplace add "$src" || die "marketplace add $src failed (help: $DOC#plugins-did-not-install)"
-  fi
+  need_cli
+  local p
+  ensure_marketplace
   for p in $PLUGINS; do
-    plugin_installed "$p" || claude plugin install "$p@$MARKET" --scope user \
+    plugin_installed "$p" || install_plugin "$p" \
       || die "plugin install $p failed (help: $DOC#plugins-did-not-install)"
   done
-  echo "ok: plugins $PLUGINS (restart claude in this folder to load them)"
+  echo "ok: plugins $PLUGINS (restart $HARNESS in this folder to load them)"
 }
 
 cmd_extensions() {
@@ -220,19 +270,21 @@ cmd_extensions() {
     echo "ok: no extensions (install one later with bin/jarvis-setup.sh extensions <id>)"
     return 0
   fi
-  command -v claude >/dev/null 2>&1 || die "claude is not on PATH"
+  need_cli
   local id
   for id in "$@"; do
     case " $EXTENSIONS " in *" $id "*) ;; *) die "unknown extension '$id' (known: $EXTENSIONS)" ;; esac
-    if ! claude plugin marketplace list 2>/dev/null | grep -q "$MARKET"; then
-      claude plugin marketplace add "$(marketplace_source)" || die "marketplace add failed (help: $DOC#plugins-did-not-install)"
-    fi
-    plugin_installed "$id" || claude plugin install "$id@$MARKET" --scope user \
+    ensure_marketplace
+    plugin_installed "$id" || install_plugin "$id" \
       || die "plugin install $id failed (help: $DOC#plugins-did-not-install)"
     grep -qx "$id" "$CONFIG/extensions" 2>/dev/null || echo "$id" >> "$CONFIG/extensions"
     sed -i.bak '/^none$/d' "$CONFIG/extensions" && rm -f "$CONFIG/extensions.bak"
   done
-  echo "ok: extensions installed: $* (new workers load them; no restart needed)"
+  if [ "$HARNESS" = codex ]; then
+    echo "ok: extensions installed: $* (new workers load them; restart codex here to use their skills in this session)"
+  else
+    echo "ok: extensions installed: $* (new workers load them; no restart needed)"
+  fi
 }
 
 cmd_cmux_check() {
@@ -267,7 +319,7 @@ cmd_update_check() {
   else
     echo "JARVIS_UPDATE: could not reach origin to check for updates (skipped; offline is fine)"
   fi
-  if ! autoupdate_decided; then
+  if [ "$HARNESS" = claude ] && ! autoupdate_decided; then
     echo "JARVIS_UPDATE: plugin auto-update is not set. Ask once whether Claude Code should update the Jarvis plugins at startup; record the answer with bin/jarvis-setup.sh plugin-autoupdate on|off (update now instead: claude plugin marketplace update $MARKET)"
   fi
 }
@@ -315,6 +367,7 @@ PY
 case "${1:-}" in
   detect) cmd_detect ;;
   status) cmd_status ;;
+  harness) echo "$HARNESS" ;;
   backend) shift; cmd_backend "$@" ;;
   plugins) cmd_plugins ;;
   extensions) shift; cmd_extensions "$@" ;;
