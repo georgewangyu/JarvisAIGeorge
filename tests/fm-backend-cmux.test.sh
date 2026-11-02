@@ -1091,7 +1091,10 @@ printf '%s\n' "$*" >> "$d/log"
 case "$1" in
   list-windows)
     if [ "$mode" = inventory-error ] || { [ "$mode" = post-error ] && [ -f "$d/attempted" ]; }; then exit 1; fi
-    if [ "$mode" = bad-schema ]; then printf '{}'; else printf '[{"id":"%s"}]' "$win"; fi
+    if [ "$mode" = bad-schema ]; then printf '{}'
+    elif [ "$mode" = empty-windows ]; then printf '[]'
+    else printf '[{"id":"%s"}]' "$win"
+    fi
     ;;
   workspace)
     delayed=0
@@ -1210,7 +1213,7 @@ test_kill_adds_sibling_when_last_in_window() {
 
 test_kill_confirmation_and_refusal() {
   local dir mode
-  for mode in refuse noop error post-error bad-schema inventory-error; do
+  for mode in refuse noop error post-error bad-schema inventory-error empty-windows; do
     dir=$(make_cmux_close_case "kill-$mode" "$mode")
     run_cmux_close_case "$dir" fm-close-task && fail "$mode reported a false successful close"
     assert_absent "$dir/gone" "$mode unexpectedly removed the workspace"
@@ -1255,7 +1258,7 @@ test_kill_recovers_stale_target_by_label() {
 test_teardown_cmux_retains_unproven_endpoint() {
   local dir mode rc
   command -v tasks-axi >/dev/null 2>&1 || { echo 'skip: tasks-axi not installed'; return; }
-  for mode in refuse noop post-error confirm; do
+  for mode in refuse noop post-error empty-windows confirm; do
     dir=$(make_cmux_close_case "teardown-$mode" "$mode")
     mkdir -p "$dir/project"
     git init -q "$dir/project"
@@ -1283,7 +1286,11 @@ test_teardown_cmux_retains_unproven_endpoint() {
       cmp -s "$dir/meta-before" "$dir/home/state/close-task.meta" || fail "refused teardown changed endpoint metadata"
       assert_equals in_flight "$(tasks-axi show close-task --file "$dir/home/data/backlog.md" | sed -n 's/^  state: *//p' | head -1)" "refused teardown changed its backlog state"
       assert_no_grep 'teardown close-task complete' "$dir/out" "false completion announcement"
-      assert_grep close-workspace "$dir/log" "fixture never reached the failing close"
+      if [ "$mode" = empty-windows ]; then
+        assert_no_grep close-workspace "$dir/log" "unproven inventory must stop before close"
+      else
+        assert_grep close-workspace "$dir/log" "fixture never reached the failing close"
+      fi
     fi
   done
   pass "fm-teardown: cmux refusal retains metadata across startup replay; confirmed task close retires records"

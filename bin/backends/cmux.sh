@@ -695,7 +695,7 @@ fm_backend_cmux_window_of_workspace() {  # <workspace_id> -> "<window_id> <count
 fm_backend_cmux_close_inventory() {
   local wins wid batch inventory='[]'
   wins=$(fm_backend_cmux_cli list-windows --json --id-format uuids) || return 1
-  printf '%s' "$wins" | jq -e 'type == "array" and all(.[]; (.id | type == "string" and length > 0))' >/dev/null || return 1
+  printf '%s' "$wins" | jq -e 'type == "array" and length > 0 and all(.[]; (.id | type == "string" and length > 0))' >/dev/null || return 1
   while IFS= read -r wid; do
     [ -n "$wid" ] || continue
     batch=$(fm_backend_cmux_cli workspace list --json --id-format uuids --window "$wid") || return 1

@@ -1682,7 +1682,7 @@ The repaired adapter returned a live workspace/surface pair, and closing only th
 A separate disposable task retained a running terminal process after its work was declared complete.
 `cmux close-workspace --workspace "$workspace"` returned `Error: confirmation_required: Workspace has a running process; retry with --force` with exit 1.
 Normal `bin/fm-teardown.sh "$task"` then closed that exact single-surface task, verified app-wide absence, retired its metadata and backlog row, and preserved the focused manager workspace.
-Fixtures additionally cover a zero-exit semantic refusal, a successful-looking no-op, failed or malformed inventories, changed identity, extra surfaces, and refusal even under teardown's force option.
+Fixtures additionally cover a zero-exit semantic refusal, a successful-looking no-op, failed, empty, or malformed inventories, changed identity, extra surfaces, and refusal even under teardown's force option.
 The refused cases retain byte-identical endpoint metadata and the in-flight backlog row without a pending-close marker that could remove them on startup.
 
 Refresh the portable behavior checks with:
