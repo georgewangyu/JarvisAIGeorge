@@ -335,7 +335,8 @@ Claude, Codex, OpenCode, Pi, pi-signed, Grok, Kimi, Cursor, and Muse share that 
 
 A reported close failure costs teardown every durable record of the task, so what each backend's close actually returns was measured before that status was given any authority.
 Verified on 2026-09-14 with tmux 3.7c by driving `fm_backend_kill` against real tmux endpoints, and the Orca arm by driving `fm_backend_orca_kill` under a search path with no `orca` on it.
-Zellij and cmux were not driven with their CLIs absent; the table below states what those arms report today rather than claiming a measurement.
+Zellij was not driven with its CLI absent; the table below states what that arm reports today rather than claiming a measurement.
+The cmux close confirmation and absence checks were additionally verified on 2026-11-02 with cmux 0.65.2; its current evidence is recorded in the cmux section below.
 
 ```sh
 tests/fm-teardown-endpoint-safety.test.sh
@@ -360,11 +361,10 @@ The refusal is reached only through a close that could not do its job, and each 
 | tmux | 0, silent | 1, resolved by re-reading the window's exact recorded identity; a read that itself could not run refuses rather than passing for absence |
 | orca | 0, silent | 1 when a missing CLI means no close was attempted; 0 for a close command that failed after the CLI accepted it |
 | zellij | 0, silent | 0, not yet distinguishable |
-| cmux | 0, silent, only on a readable every-window inventory without the task's label | 1 unless a bounded re-read shows the workspace gone from every window; one confirmation retry with the flag the CLI's help advertises |
+| cmux | 0 after a complete app-wide inventory proves absence | 1 while still present or when inventory is unreadable; a running-process confirmation retries only the exact scoped task and sole surface |
 | herdr | 0, silent | 0 from this arm; `bin/fm-teardown.sh` gates every Herdr record removal on `fm_backend_herdr_endpoint_confirmed_gone` instead |
 
-The two arms that still report 0 need a presence re-read taken after their own close, and the close-then-read timing that re-read depends on cannot be established without the real Zellij and Orca binaries.
-cmux's re-read polls every window for a bounded time (`FM_CMUX_CLOSE_WAIT_TRIES`, `FM_CMUX_CLOSE_WAIT_SLEEP`), and `tests/fm-teardown-endpoint-safety.test.sh` covers a confirmation-required close that leaves the workspace open plus the verified rerun.
+The Zellij and Orca arms that still report 0 need a presence re-read taken after their own close, and the close-then-read timing that re-read depends on cannot be established without their real binaries.
 Guessing it is what a refusal must never rest on: a gate that refused an already-exited session would break ordinary cleanup on every task, which is a worse failure than the stranded endpoint it would be trying to prevent.
 tmux's re-read is deliberately exact - `=session` plus a whole-line window-name match - because a prefix match would read a neighboring window as this window's survivor, which is the same exactness the cleanup identity boundary above already requires.
 It is also deliberately conservative about the read itself, sharing `fm_backend_tmux_window_inventory` with `fm_backend_tmux_agent_state` so both mean the same thing by an absent session: only a definitive missing-session, missing-server, or connect-error response proves the window gone.
@@ -372,7 +372,7 @@ Any other read failure - a momentarily unresponsive server, or a teardown PATH w
 
 Two bounds of the refusal are known and deliberately not closed here.
 
-`--force` overrides it at exactly one site, the generic non-Herdr/non-Orca close.
+`--force` overrides it at exactly one site, the generic non-Herdr/non-Orca/non-cmux close.
 That is the only close where continuing is actually reachable: the worktree is already returned by then and nothing after it needs the backend that could not close, so `--force` - the operator's existing authority to discard a task's records - can mean something there.
 A forced run still prints the full diagnosis naming the backend, the target, and that the close failed, so what may survive is never silent.
 It states what `--force` authorizes rather than what will have happened, because a later refusal in the same run - the Herdr confirmed-gone gate, or the inactive-reconcile delivery gate - can still stop it with every record retained.
@@ -381,9 +381,10 @@ The Orca close refuses under `--force` too.
 The step immediately after it removes the Orca worktree through the same CLI whose absence is the only thing that arm ever reports, so a forced continue would die there having removed nothing while claiming the records were already gone.
 The two child close sites inside forced secondmate cleanup also keep refusing: that path is only ever reached under `--force`, so honoring force there would delete the refusal rather than override it, and would contradict the adjacent Herdr child gate that stops forced cleanup for the same hazard.
 
-The retained record is this run's, not a durable guarantee.
+Except for cmux, the retained record is this run's, not a durable guarantee.
 A task carrying a backlog transition writes its pending-close marker before the endpoint close, and the marker survives the refusal; the next `bin/fm-bootstrap.sh` replays it and removes the retained record.
 The pre-existing Herdr confirmed-gone gate has the identical property.
+cmux defers publication of that marker until its workspace is confirmed absent, so a failed close retains its endpoint identity across startup replay.
 The refusal message says so rather than promising a retention teardown does not own, so an operator reconciles the surviving endpoint instead of trusting the record to still be there later.
 
 Both directions are proven non-vacuous.
@@ -1661,6 +1662,34 @@ Live run on cmux 0.64.25 (106), macOS aarch64, in a throwaway cmux window, a thr
 - Found and fixed in the same run: `workspace list` covers only the caller's window, so a teardown run from another window missed the task. With the layout on, lookups read every window.
 
 Not exercised: a live Claude manager session driving this loop (that needs the full bootstrap toolchain), Codex workers (not installed; the board polls their state the same way), and secondmates on cmux (still refused by `bin/fm-spawn.sh`).
+
+### Board uncertainty presentation (2026-11-02)
+
+Verified on macOS with `cmux version` reporting `cmux 0.65.2 (113) [12023d89f]`.
+The generated board displayed `2 unknown`, included backend names for both cmux and Herdr rows, and renamed its existing group to `Jarvis: Workers · 2 unknown`.
+The group retained its pin, color, and icon, and the focused workspace remained the manager throughout the display refresh.
+This verifies presentation of already-reconciled uncertainty, not the liveness of either task.
+`bin/fm-test-run.sh tests/fm-cmux-layout.test.sh` passed all six checks, covering unknown and unrecognized buckets, executable board rows and counts, sidebar summary publication, existing known-state colors, and the unchanged Claude hook.
+This check uses a fixture crew-state process and a fake cmux write boundary; the live observations additionally used `cmux read-screen`, `cmux workspace-group list`, and `cmux identify` against the existing generated header.
+
+### Workspace readiness and close confirmation (2026-11-02)
+
+On cmux 0.65.2 (113), a controlled `cmux new-workspace --name "$title" --cwd "$cwd" --focus false --id-format uuids` returned `OK workspace:<ref>` before the next `cmux workspace list --json --id-format uuids` included that workspace.
+The next list read found its scoped title in the same window; a slower direct invocation also found it immediately.
+The adapter now polls identity and surface readiness after a single create, and preserves an ambiguous grouped attempt instead of creating a plain duplicate.
+The repaired adapter returned a live workspace/surface pair, and closing only the generated test workspaces left the focused workspace unchanged.
+
+A separate disposable task retained a running terminal process after its work was declared complete.
+`cmux close-workspace --workspace "$workspace"` returned `Error: confirmation_required: Workspace has a running process; retry with --force` with exit 1.
+Normal `bin/fm-teardown.sh "$task"` then closed that exact single-surface task, verified app-wide absence, retired its metadata and backlog row, and preserved the focused manager workspace.
+Fixtures additionally cover a zero-exit semantic refusal, a successful-looking no-op, failed or malformed inventories, changed identity, extra surfaces, and refusal even under teardown's force option.
+The refused cases retain byte-identical endpoint metadata and the in-flight backlog row without a pending-close marker that could remove them on startup.
+
+Refresh the portable behavior checks with:
+
+```sh
+bin/fm-test-run.sh tests/fm-backend-cmux.test.sh tests/fm-teardown-endpoint-safety.test.sh tests/fm-cmux-layout.test.sh
+```
 
 ## Codex App host tools
 

@@ -20,6 +20,8 @@
 # record being removed, the intended transition is recorded in
 # state/<id>.backlog-close first, so a process killed between the halves leaves
 # the next session start enough to finish it; a landed close removes that record.
+# cmux publishes that marker only after proving its workspace gone, so an
+# unconfirmed close cannot lose its endpoint record through startup replay.
 # A close that fails is fatal and loud, preserves its pending-close record, and
 # is retried by the next session start. The transition is skipped on a
 # config/backlog-backend=manual home and in a markdown home that keeps no
@@ -3017,7 +3019,7 @@ preflight_firstmate_home_herdr_children() {  # <home>
 # about its own close is bin/fm-backend.sh's fm_backend_kill contract.
 #
 # Returns 0 when the caller must continue anyway and 1 when it must stop.
-# <honors-force> is 1 at exactly one site, the generic non-Herdr/non-Orca
+# <honors-force> is 1 at exactly one site, the generic non-Herdr/non-Orca/non-cmux
 # close, where --force is the operator's existing authority to discard this
 # task's records deliberately AND continuing is actually reachable: the
 # worktree is already returned by then and nothing after it needs the backend
@@ -3031,7 +3033,8 @@ preflight_firstmate_home_herdr_children() {  # <home>
 # than override it, and would contradict the adjacent Herdr child gate that
 # stops forced cleanup for this same hazard.
 #
-# What is retained is this run's records, not a durable guarantee: a task
+# Except for cmux's deferred marker, retention is this run's records, not a
+# durable guarantee: a task
 # carrying a backlog transition already wrote its pending-close marker, and the
 # next session start replays that marker and removes the retained record. The
 # message says so rather than promising a retention teardown does not own.
@@ -3043,7 +3046,9 @@ endpoint_close_refusal() {  # <subject> <backend> <target> <honors-force>
     return 0
   fi
   echo "error: stopping this cleanup without removing the task's records, so the record naming $target is still here to reconcile from." >&2
-  echo "error: that retention is not durable across a session start: if this task carries a backlog transition, the next session replays its pending close and removes the retained record, so reconcile the surviving endpoint yourself rather than trusting the retention." >&2
+  if [ "$backend" != cmux ]; then
+    echo "error: that retention is not durable across a session start: if this task carries a backlog transition, the next session replays its pending close and removes the retained record, so reconcile the surviving endpoint yourself rather than trusting the retention." >&2
+  fi
   if [ "$honors_force" = 1 ]; then
     echo "error: rerun teardown once the close can succeed, or rerun with --force to discard this task's records deliberately." >&2
   fi
@@ -3373,7 +3378,13 @@ teardown_legacy_stamp_rollback() {
   fi
   BACKLOG_CLOSED=1
   META_SPAWN_GEN=$TEARDOWN_META_SPAWN_GEN
-  if ! fm_backlog_close_marker_write "$STATE" "$ID" "$DATA" "$META_SPAWN_GEN" \
+  if [ "$BACKEND" = cmux ]; then
+    # Keep this task's metadata authoritative until the exact close is proven.
+    fm_backlog_close_marker_clear "$STATE" "$ID" || {
+      echo "error: cannot retire cmux's pending close before endpoint confirmation; retaining task records" >&2
+      exit 1
+    }
+  elif ! fm_backlog_close_marker_write "$STATE" "$ID" "$DATA" "$META_SPAWN_GEN" \
       "${BACKLOG_TRANSITION_FLAGS[@]+"${BACKLOG_TRANSITION_FLAGS[@]}"}" \
       "${BACKLOG_DONE_ARGS[@]+"${BACKLOG_DONE_ARGS[@]}"}"; then
     if [ "$TEARDOWN_LEGACY_ACCEPTED" = 1 ] && [ -z "$TEARDOWN_LEGACY_RETAINED_STAMP" ] \
@@ -3513,8 +3524,18 @@ elif [ "$BACKEND" = herdr ]; then
     echo "warning: herdr session presentation lock path is unavailable; skipping the pane close rather than closing unlocked" >&2
   fi
 elif [ "$BACKEND" != orca ]; then
+  close_honors_force=1
+  [ "$BACKEND" != cmux ] || close_honors_force=0
   fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" \
-    || endpoint_close_refusal "$ID" "$BACKEND" "$T" 1 || exit 1
+    || endpoint_close_refusal "$ID" "$BACKEND" "$T" "$close_honors_force" || exit 1
+fi
+if [ "$BACKEND" = cmux ] && [ "$BACKLOG_CLOSED" = 1 ]; then
+  fm_backlog_close_marker_write "$STATE" "$ID" "$DATA" "$META_SPAWN_GEN" \
+    "${BACKLOG_TRANSITION_FLAGS[@]+"${BACKLOG_TRANSITION_FLAGS[@]}"}" \
+    "${BACKLOG_DONE_ARGS[@]+"${BACKLOG_DONE_ARGS[@]}"}" || {
+      echo "error: cmux workspace is gone but its pending backlog transition could not be recorded; retaining task records" >&2
+      exit 1
+    }
 fi
 if [ "$HERDR_PRESENTATION_RETIRE_CANDIDATE" = 1 ]; then
   if [ "$(fm_backend_herdr_pane_agent_state "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_PANE")" = dead ]; then

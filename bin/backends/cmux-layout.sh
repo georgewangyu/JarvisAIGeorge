@@ -219,7 +219,7 @@ fm_cmux_layout_ensure() {
 
 # Create a task workspace inside the Workers group with exactly one create
 # call. Returns 0 when cmux acknowledged it (the caller waits for visibility),
-# 1 when the create was not acknowledged, and 2 when no Workers group is
+# 1 when the create was attempted but not acknowledged, and 2 when no Workers group is
 # available (the caller may use a plain create).
 fm_cmux_layout_create() {  # <scoped-label> <cwd>
   local label=$1 cwd=$2 gw gid w

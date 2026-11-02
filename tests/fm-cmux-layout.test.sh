@@ -199,4 +199,6 @@ test_board_keeps_unknown_and_names_backend
 test_board_group_summary
 test_home_names_and_labels
 test_buckets
+test_board_uncertainty
+test_summary_and_known_colors
 test_sidebar_hook
