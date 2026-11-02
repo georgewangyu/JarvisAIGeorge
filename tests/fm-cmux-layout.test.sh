@@ -45,8 +45,8 @@ test_buckets() {
   mkdir -p "$h"
   # shellcheck disable=SC2016 # expanded by the inner bash
   out=$(layout "$h" 'for s in working parked done blocked failed paused unknown; do fm_cmux_layout_bucket "$s"; echo; done')
-  [ "$out" = $'working\nworking\ndone\nneeds you\nneeds you\nneeds you\nworking' ] || fail "buckets: got '$out'"
-  pass "cmux layout: crew states map to working, done, and needs you"
+  [ "$out" = $'working\nworking\ndone\nneeds you\nneeds you\nneeds you\nunknown' ] || fail "buckets: got '$out'"
+  pass "cmux layout: crew states map to working, done, needs you, and unknown"
 }
 
 test_sidebar_hook() {
@@ -73,7 +73,74 @@ SH
   pass "jarvis-sidebar hook: change-only pill, idle reminders ignored, no-op outside cmux"
 }
 
+test_board_keeps_unknown_and_names_backend() {
+  local h="$TMP_ROOT/board" out stub="$TMP_ROOT/board-crew-state.sh"
+  mkdir -p "$h/state" "$h/config"
+  printf 'backend=cmux\ncmux_workspace_id=W1\nkind=ship\n' > "$h/state/a.meta"
+  printf 'backend=cmux\ncmux_workspace_id=W2\nkind=ship\n' > "$h/state/b.meta"
+  printf 'backend=tmux\nkind=ship\n' > "$h/state/c.meta"
+  cat > "$stub" <<'SH'
+#!/usr/bin/env bash
+case "$1" in
+  a) echo 'state: working · source: pane · harness busy' ;;
+  b) echo 'state: unknown · source: pane · harness state unavailable (unknown kimi-unverified)' ;;
+  c) echo 'state: done · source: status-log · done' ;;
+esac
+SH
+  chmod +x "$stub"
+  out=$(FM_HOME="$h" FM_CREW_STATE_BIN="$stub" bash "$ROOT/bin/fm-cmux-board.sh" --once)
+  printf '%s\n' "$out" | sed -n 2p | grep -qx '  1 working · 1 unknown · 1 done' || fail "summary must count unknown separately: $out"
+  printf '%s\n' "$out" | grep -Eq '^  unknown +b +cmux +unknown$' || fail "unknown row must stay unknown with its backend: $out"
+  printf '%s\n' "$out" | grep -q 'why: harness state unavailable' || fail "unknown row must carry its reason: $out"
+  printf '%s\n' "$out" | grep -Eq '^  done +c +tmux +done$' || fail "a row from another backend must name it: $out"
+  pass "cmux board: unknown stays unknown in rows and counts; rows name their backend"
+}
+
+# make_group_fake <dir>: a fake cmux holding one window, a manager workspace,
+# and one Workers group whose name lives in <dir>/group-name.
+make_group_fake() {
+  local d=$1
+  mkdir -p "$d/bin"
+  echo 'Jarvis: Workers' > "$d/group-name"
+  cat > "$d/bin/cmux" <<'SH'
+#!/usr/bin/env bash
+D="$FAKE_DIR"
+printf '%s\n' "$*" >> "$D/log"
+case "$1" in
+  list-windows) echo '[{"id":"WIN"}]' ;;
+  workspace) echo '{"workspaces":[{"id":"MGR","title":"Jarvis"}]}' ;;
+  workspace-group)
+    case "$2" in
+      list) jq -n --arg n "$(cat "$D/group-name")" '{groups:[{ref:"workspace_group:1",name:$n,anchor_workspace_ref:"workspace:2"}]}' ;;
+      rename) [ -f "$D/rename-fails" ] && exit 1; shift 2; while [ $# -gt 0 ]; do [ "$1" = --name ] && printf '%s\n' "$2" > "$D/group-name"; shift; done ;;
+    esac ;;
+  *) : ;;
+esac
+SH
+  chmod +x "$d/bin/cmux"
+}
+
+test_board_group_summary() {
+  local d="$TMP_ROOT/group" h stub
+  h="$d/home"; stub="$d/stub.sh"
+  mkdir -p "$h/state" "$h/config"
+  make_group_fake "$d"
+  echo workers > "$h/config/cmux-layout"
+  echo MGR > "$h/state/.cmux-manager-ws"
+  printf 'backend=cmux\ncmux_workspace_id=W1\nkind=ship\n' > "$h/state/a.meta"
+  printf 'backend=cmux\ncmux_workspace_id=W2\nkind=ship\n' > "$h/state/b.meta"
+  # shellcheck disable=SC2016 # the stub's own $1
+  printf '#!/usr/bin/env bash\ncase "$1" in a) echo "state: working · source: pane · x" ;; *) echo "state: unknown · source: pane · y" ;; esac\n' > "$stub"
+  chmod +x "$stub"
+  PATH="$d/bin:$PATH" FAKE_DIR="$d" FM_HOME="$h" FM_CREW_STATE_BIN="$stub" FM_CMUX_BOARD_INTERVAL=0 \
+    bash "$ROOT/bin/fm-cmux-board.sh" --passes 1 >/dev/null
+  [ "$(cat "$d/group-name")" = 'Jarvis: Workers · 1 working · 1 unknown' ] || fail "group summary: got '$(cat "$d/group-name")'"
+  pass "cmux board: the group title carries the same counts, unknown included"
+}
+
 test_layout_is_opt_in
+test_board_keeps_unknown_and_names_backend
+test_board_group_summary
 test_home_names_and_labels
 test_buckets
 test_sidebar_hook

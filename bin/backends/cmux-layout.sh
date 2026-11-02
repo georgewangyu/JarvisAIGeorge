@@ -197,12 +197,14 @@ fm_cmux_layout_create() {  # <scoped-label> <cwd>
 }
 
 # State buckets for the board and tab colors, from fm-crew-state's states.
+# Anything that is not a verified state stays `unknown`: it is never counted as
+# working, and its tab color is cleared rather than styled.
 fm_cmux_layout_bucket() {  # <state>
   case "$1" in
     working|parked) printf 'working' ;;
     done) printf 'done' ;;
     blocked|failed|paused|needs-decision|stale) printf 'needs you' ;;
-    *) printf 'working' ;;
+    *) printf 'unknown' ;;
   esac
 }
 
@@ -232,4 +234,13 @@ fm_cmux_layout_sync() {  # <window> <group-ref> <summary>
     { grep -v "^$ws	" "$cache" 2>/dev/null; printf '%s\t%s\n' "$ws" "$b"; } > "$cache.tmp" && mv "$cache.tmp" "$cache"
   done
   return 0
+}
+
+# The reason shown under an `unknown` board row: the detail fm-crew-state gave
+# for the unverified state ("state: unknown · source: <s> · <detail>").
+fm_cmux_layout_unknown_reason() {  # <crew-state line>
+  local d=${1#*· source: }
+  case "$d" in *' · '*) d=${d#* · } ;; *) d="" ;; esac
+  [ -n "$d" ] || d="no state reading"
+  printf 'why: %s' "$d"
 }
