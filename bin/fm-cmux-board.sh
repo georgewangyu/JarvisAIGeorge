@@ -91,16 +91,25 @@ while :; do
     rm -f "$tsv"
     exit 0
   fi
-  if [ "$board" != "$prev" ]; then
-    printf '\033[H\033[2J%s\n' "$board"
-    prev=$board
-  fi
   touch "$STATE/.cmux-board-beat" 2>/dev/null
+  note=""
   if fm_cmux_layout_enabled; then
     w=$(fm_cmux_layout_window_of "$(cat "$STATE/.cmux-manager-ws" 2>/dev/null)")
     gid=""
     [ -n "$w" ] && gid=$(fm_cmux_layout_find_group "$w")
-    [ -n "$gid" ] && fm_cmux_layout_sync "$w" "$gid" "$SUMMARY" < "$tsv"
+    if [ -n "$gid" ]; then
+      fm_cmux_layout_sync "$w" "$gid" "$SUMMARY" < "$tsv"
+      note=$FM_CMUX_LAYOUT_TITLE_ERROR
+    elif [ -z "$w" ]; then
+      note="cannot find the manager tab's window"
+    else
+      note="cannot find the Workers group"
+    fi
+  fi
+  [ -z "$note" ] || board="$board"$'\n\n'"  title sync: $note"
+  if [ "$board" != "$prev" ]; then
+    printf '\033[H\033[2J%s\n' "$board"
+    prev=$board
   fi
   rm -f "$tsv"
   if [ "$PASSES" -gt 0 ]; then

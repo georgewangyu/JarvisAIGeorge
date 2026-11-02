@@ -245,14 +245,23 @@ fm_cmux_layout_bucket() {  # <state>
 }
 
 # One UI pass: rename the group with live counts and color each worker tab.
+# The title is re-read after a rename; a title that did not change, or could
+# not be read, is left in FM_CMUX_LAYOUT_TITLE_ERROR for the board to show,
+# and the next pass tries again. It never touches worker endpoints.
 # Input on stdin: "<workspace-id>\t<bucket>" lines. Best effort, only on change.
 fm_cmux_layout_sync() {  # <window> <group-ref> <summary>
   local w=$1 gid=$2 summary=$3 ws b color cache="$FM_HOME/state/.cmux-layout-ui" want cur
   cur=$(fm_cmux_layout_groups "$w" | jq -r --arg g "$gid" '.groups[]? | select(.ref == $g) | .name // empty' 2>/dev/null)
   want=$(fm_cmux_layout_workers_label)
   [ -n "$summary" ] && want="$want · $summary"
-  [ -n "$cur" ] && [ "$cur" != "$want" ] && \
+  FM_CMUX_LAYOUT_TITLE_ERROR=""
+  if [ -z "$cur" ]; then
+    FM_CMUX_LAYOUT_TITLE_ERROR="could not read the Workers group title"
+  elif [ "$cur" != "$want" ]; then
     fm_backend_cmux_cli workspace-group rename "$gid" --window "$w" --name "$want" >/dev/null 2>&1
+    cur=$(fm_cmux_layout_groups "$w" | jq -r --arg g "$gid" '.groups[]? | select(.ref == $g) | .name // empty' 2>/dev/null)
+    [ "$cur" = "$want" ] || FM_CMUX_LAYOUT_TITLE_ERROR="group title still reads '${cur:-?}'; retrying next pass"
+  fi
   touch "$cache" 2>/dev/null
   while IFS=$'\t' read -r ws b; do
     [ -n "$ws" ] || continue

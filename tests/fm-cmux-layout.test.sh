@@ -146,7 +146,34 @@ test_board_group_summary() {
   pass "cmux board: the group title carries the same counts, unknown included"
 }
 
+test_board_title_resets_after_last_task() {
+  local d="$TMP_ROOT/last" h stub out
+  h="$d/home"; stub="$d/stub.sh"
+  mkdir -p "$h/state" "$h/config"
+  make_group_fake "$d"
+  echo workers > "$h/config/cmux-layout"
+  echo MGR > "$h/state/.cmux-manager-ws"
+  printf 'backend=cmux\ncmux_workspace_id=W1\nkind=ship\n' > "$h/state/a.meta"
+  printf '#!/usr/bin/env bash\necho "state: unknown · source: pane · y"\n' > "$stub"
+  chmod +x "$stub"
+  board() { PATH="$d/bin:$PATH" FAKE_DIR="$d" FM_HOME="$h" FM_CREW_STATE_BIN="$stub" FM_CMUX_BOARD_INTERVAL=0 bash "$ROOT/bin/fm-cmux-board.sh" --passes 1; }
+  board >/dev/null
+  [ "$(cat "$d/group-name")" = 'JarvisAIGeorge: Workers · 1 unknown' ] || fail "one unknown task: got '$(cat "$d/group-name")'"
+  rm -f "$h/state/a.meta"
+  out=$(board)
+  [ "$(cat "$d/group-name")" = 'JarvisAIGeorge: Workers' ] || fail "last task removed must reset the title: got '$(cat "$d/group-name")'"
+  printf '%s' "$out" | grep -q 'no workers' || fail "board must show no workers: $out"
+  printf '%s' "$out" | grep -q 'title sync' && fail "a successful reset must not report a sync problem: $out"
+  : > "$d/rename-fails"
+  printf 'backend=cmux\ncmux_workspace_id=W1\nkind=ship\n' > "$h/state/a.meta"
+  out=$(board)
+  printf '%s' "$out" | grep -q "title sync: group title still reads 'JarvisAIGeorge: Workers'" || fail "a failed rename must be shown: $out"
+  ! grep -Eq 'close|send' "$d/log" || fail "title sync must never close or type into a worker"
+  pass "cmux board: the title resets after the last task, and a failed rename is shown and retried"
+}
+
 test_layout_is_opt_in
+test_board_title_resets_after_last_task
 test_board_keeps_unknown_and_names_backend
 test_board_group_summary
 test_home_names_and_labels
