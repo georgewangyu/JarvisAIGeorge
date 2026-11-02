@@ -200,8 +200,9 @@ class Repo:
 
     def listing_config(self):
         c = self.config.get("listing", {})
-        return (int(c.get("per_extension_chars", 1000)), int(c.get("total_chars", 5000)),
-                int(c.get("listed_desc_max", 200)), int(c.get("skill_desc_max", 250)))
+        return {k: int(c.get(k, v)) for k, v in {
+            "per_extension_chars": 1000, "manager_chars": 1500, "agent_chars": 2500,
+            "catalog_line_max": 220, "listed_desc_max": 200, "skill_desc_max": 250}.items()}
 
     def listed_names(self):
         """Skills the model sees in its skill list: the router, every agent's preload skills,
@@ -348,73 +349,76 @@ class Repo:
                 + f"# Role: {name}\n\n" + load + body.rstrip() + "\n\n" + self.rules_block(data))
         self.out(self.prel("skills", skill, "SKILL.md"), text.rstrip() + "\n")
 
+    def catalog_agent_rows(self):
+        """One row per agent of every known extension: what it does and when to dispatch it."""
+        rows = []
+        for ext in [p for p in self.peers() if not p.get("core")]:
+            for a in ext.get("agents", []):
+                line = f"{a['summary'].rstrip('.')}. Dispatch when: {a['dispatch_when'].rstrip('.')}."
+                rows.append((ext, a, line[0].upper() + line[1:]))
+        return rows
+
     def build_catalog(self):
-        exts = [self.manifest] + [p for p in self.peers() if not p.get("core")]
+        """Level 1 of skill routing: the manager sees agents, never extension skills."""
         mk = self.config["marketplace"]["name"]
+        repo = self.manifest.get("repo", "")
         lines = [
             emit_frontmatter({
                 "name": "extension-catalog",
-                "description": ("Lists every known Jarvis extension: its agents, when to dispatch "
-                                "each, its skills, and how to launch it in Claude Code or another "
-                                "tool. Load before routing or dispatching work to a worker."),
+                "description": ("Lists every known Jarvis agent, what it does and when to dispatch it, "
+                                "how to launch it, and the core skills. Load before routing or "
+                                "dispatching work to a worker."),
             }),
             f"<!-- {GENERATED_NOTE.format(src='jarvis-extension.json manifests')} -->",
             "",
             "# Extension catalog",
             "",
-            "Pick the extension and agent whose `dispatch when` matches the work. Launch the worker "
-            "with the line shown.",
+            "Pick the agent whose line matches the work and dispatch it. You see agents, not their "
+            "skills: each worker launches with core plus only its own extension and finds that "
+            "extension's skills through the extension's router.",
             "",
-            "## Finding a skill",
+            "## Agents",
             "",
-            "Each plugin keeps only a few skills in the skill list and indexes the rest in one "
-            "always-listed router skill (this catalog for core, `<id>-skills` for an extension). "
-            + self.ROUTER_HOWTO,
+            "| Agent | What it does, when to dispatch | Claude Code |",
+            "|---|---|---|",
+        ]
+        for ext, a, line in self.catalog_agent_rows():
+            lines.append(f"| `{ext['id']}:{a['name']}` | {line} | `claude --agent {ext['id']}:{a['name']}` |")
+        lines += [
             "",
-            "Core skills:",
-            "",
-            *self.router_table(),
+            "From a home, launch with `bin/fm-spawn.sh ... --agent <plugin>:<agent>`: the spawn turns on "
+            "core and that one extension for the worker and turns every other known extension off. By "
+            "hand: `claude --agent <plugin>:<agent> --settings \"$(bin/jarvis-plugins-for.sh "
+            "<plugin>)\"`. Codex has no agent files and no per-launch plugin switch: start the worker "
+            "with a brief whose first line is \"Load `$role-<agent>` first\" (docs/jarvis-plugins.md, "
+            "\"Skill listing budget\"). Other tools: tell the worker to load `role-<agent>`.",
             "",
             "## Installed or not",
             "",
-            "Check before routing. Claude Code: `claude plugin list` shows `<plugin>@" + mk + "`, or "
-            "`<plugin>@<plugin>` when the extension was installed from its own marketplace; either "
-            "counts. Codex: `codex plugin list` shows the plugin as `installed, enabled` under either "
-            "marketplace. In a JarvisAIGeorge home, `bin/jarvis-setup.sh status` checks the current "
-            "tool. Mark each extension below installed or not installed when you tell the user what "
-            "you can do.",
+            "Check before routing. Claude Code: `claude plugin list` shows `<plugin>@" + mk + "` or "
+            "`<plugin>@<plugin>` (installed from its own marketplace); either counts, enabled or not. "
+            "Codex: its plugin list, under either marketplace. In a home, `bin/jarvis-setup.sh status` "
+            "checks the current tool.",
             "",
-            "When the work needs an extension that is not installed, ask in one line, for example "
-            "\"That needs the coding agent from GeorgeCodingAgent. Install it?\" On yes, run its "
-            "install line yourself, then dispatch: a new worker loads it, and the manager does not "
-            "need a restart. Never install without that yes. On no, say what you can do without it.",
+            "When the work needs an agent whose extension is not installed, ask in one line, for "
+            "example \"That needs the coding agent from GeorgeCodingAgent. Install it?\" On yes, run "
+            "its install line yourself, then dispatch; the manager needs no restart. Never install "
+            "without that yes.",
             "",
-            "Claude Code launch shape: `claude --agent <plugin>:<agent> --settings "
-            "'{\"enabledPlugins\":{\"<plugin>@" + mk + "\":true}}'` (the `--settings` part turns the "
-            "extension on for that worker only). Codex has no agent files: start the worker with a "
-            "brief whose first line is \"Load `$role-<agent>` first\" (from a home, `bin/fm-spawn.sh` "
-            "without `--agent`). Other tools: tell the worker to load `role-<agent>`.",
-            "",
+            "| Extension | Install (Claude Code) | Install (Codex) |",
+            "|---|---|---|",
         ]
-        for ext in exts:
-            lines += [f"## {ext['name']} (`{ext['id']}`)", "", ext.get("description", ""), ""]
-            if not ext.get("core"):
-                lines += [f"Install: Claude Code `claude plugin install {ext['id']}@{mk}`; Codex "
-                          f"`codex plugin add {ext['id']}@{mk}` (after `codex plugin marketplace add "
-                          f"{self.manifest.get('repo', '')}`)", ""]
-            lines += ["| Agent | Dispatch when | Claude Code | Codex and other tools |", "|---|---|---|---|"]
-            own = self.agent_sources() if ext is self.manifest else {}
-            for a in ext.get("agents", []):
-                data = own.get(a["name"], ({}, "", ""))[0]
-                launch = f"`claude --agent {ext['id']}:{a['name']}`"
-                if data.get("standalone"):
-                    launch = f"`claude --agent {a['name']}` (standalone file, see the install docs)"
-                role = self.role_skill_name(a["name"], data)
-                lines.append(f"| `{a['name']}` | {a['dispatch_when']} | {launch} | load `{role}` |")
-            lines += ["", f"Router: `{ext['id']}:{self.router_name(ext)}` indexes every skill. Skills: "
-                      + ", ".join(f"`{s}`" for s in ext.get("skills", [])), ""]
-            if ext.get("relies_on_core"):
-                lines += ["Relies on core: " + ", ".join(f"`{s}`" for s in ext["relies_on_core"]), ""]
+        for ext in [p for p in self.peers() if not p.get("core")]:
+            lines.append(f"| {ext['name']} | `claude plugin install {ext['id']}@{mk}` | "
+                         f"`codex plugin add {ext['id']}@{mk}` (after `codex plugin marketplace add {repo}`) |")
+        lines += [
+            "",
+            "## Core skills",
+            "",
+            self.ROUTER_HOWTO,
+            "",
+            *self.router_table(),
+        ]
         self.out(self.prel("skills", "extension-catalog", "SKILL.md"), "\n".join(lines).rstrip() + "\n")
 
     @staticmethod
@@ -492,32 +496,47 @@ class Repo:
         return out
 
     def check_listing_budget(self):
-        per_ext, total, listed_max, skill_max = self.listing_config()
+        """Budgets per launch shape, never one combined total. An extension checks its own
+        listed share. Core checks the manager shape (core alone: the manager sees agents in the
+        catalog, not extension skills) and every known agent's shape (core plus that agent's own
+        extension at its capped share), so adding extensions never fails the check."""
+        c = self.listing_config()
+        per_ext = c["per_extension_chars"]
         known = set(self.manifest.get("skills", [])) | self.generated_skill_names()
         for name in sorted(self.listed_names()):
             if name not in known:
                 self.errors.append(f"listed skill '{name}' is not a skill of this plugin")
         used = 0
         for name, desc in self.listed_descriptions().items():
-            if len(desc) > listed_max:
-                self.errors.append(f"listed skill '{name}': description is {len(desc)} chars (listed max {listed_max})")
+            if len(desc) > c["listed_desc_max"]:
+                self.errors.append(f"listed skill '{name}': description is {len(desc)} chars (listed max {c['listed_desc_max']})")
             used += len(name) + len(desc) + 4
+        for name, data in self.disk_skills().items():
+            d = str(data.get("description", ""))
+            if name in known and len(d) > c["skill_desc_max"]:
+                self.errors.append(f"skill '{name}': description is {len(d)} chars (max {c['skill_desc_max']})")
         budget = int(self.manifest.get("listing_budget", per_ext))
         if budget > per_ext:
             self.errors.append(f"listing_budget {budget} is over the per-extension cap {per_ext}")
-        if used > budget:
-            self.errors.append(f"listed skills use {used} chars, over this plugin's listing budget {budget}; "
-                               "hide a skill behind the router or shorten a description")
-        for name, data in self.disk_skills().items():
-            d = str(data.get("description", ""))
-            if name in known and len(d) > skill_max:
-                self.errors.append(f"skill '{name}': description is {len(d)} chars (max {skill_max})")
-        combined = sum(min(int(m.get("listing_budget", per_ext)), per_ext)
-                       for m in [self.manifest] + self.peers())
-        if combined > total:
-            self.errors.append(f"combined listing budget of {1 + len(self.peers())} known plugins is "
-                               f"{combined} chars, over the total {total}")
         self.listing_used = used
+        self.shapes = {}
+        if not self.is_core:
+            if used > budget:
+                self.errors.append(f"listed skills use {used} chars, over this plugin's listing budget {budget}; "
+                                   "hide a skill behind the router or shorten a description")
+            return
+        if used > c["manager_chars"]:
+            self.errors.append(f"manager launch shape lists {used} chars, over its budget {c['manager_chars']}")
+        self.shapes["manager"] = used
+        for ext, a, line in self.catalog_agent_rows():
+            if len(line) > c["catalog_line_max"]:
+                self.errors.append(f"catalog line for {ext['id']}:{a['name']} is {len(line)} chars (max {c['catalog_line_max']})")
+            share = min(int(ext.get("listing_budget", per_ext)), per_ext)
+            shape = used + share
+            self.shapes[f"{ext['id']}:{a['name']}"] = shape
+            if shape > c["agent_chars"]:
+                self.errors.append(f"launch shape of {ext['id']}:{a['name']} (core {used} + extension {share}) "
+                                   f"is over its budget {c['agent_chars']}")
 
     def build_plugin_manifests(self):
         m = self.manifest

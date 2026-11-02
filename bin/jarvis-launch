@@ -16,6 +16,7 @@
 #   - anywhere else: `claude --agent jarvis-ai-george:jarvis-ai-george
 #     --settings <file>`, where <file> is the home's .claude/settings.json with
 #     every "$CLAUDE_PROJECT_DIR" hook path rewritten to "$JARVIS_HOME", the
+#     manager plugin shape (core on, known extensions off), the
 #     manager write guard added for MCP tools (plugin agents ignore agent
 #     hooks), and only the home's setup script pre-approved. The file is
 #     regenerated on every launch under the home's state/.
@@ -60,11 +61,15 @@ inside_home() {
 claude_settings() {  # writes the launch settings file, prints its path
   local out="$FM_HOME/state/jarvis-launch-settings.json"
   mkdir -p "$(dirname "$out")"
-  python3 - "$JARVIS_HOME" "$out" <<'PY'
+  local shape
+  shape=$("$SCRIPT_DIR/jarvis-plugins-for.sh" --map --manager) || return 1
+  python3 - "$JARVIS_HOME" "$out" "$shape" <<'PY'
 import json, sys
-home, out = sys.argv[1], sys.argv[2]
+home, out, shape = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
 src = json.load(open(f"{home}/.claude/settings.json"))
-data = {k: v for k, v in src.items() if k in ("extraKnownMarketplaces", "enabledPlugins")}
+data = {k: v for k, v in src.items() if k == "extraKnownMarketplaces"}
+# Manager launch shape: core on, every known extension off; workers get their own.
+data["enabledPlugins"] = shape
 text = json.dumps(src.get("hooks", {}))
 text = text.replace('\\"$CLAUDE_PROJECT_DIR\\"', '\\"$JARVIS_HOME\\"').replace("$CLAUDE_PROJECT_DIR", "$JARVIS_HOME")
 hooks = json.loads(text)

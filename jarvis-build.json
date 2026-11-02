@@ -21,7 +21,9 @@
   },
   "listing": {
     "per_extension_chars": 1000,
-    "total_chars": 5000,
+    "manager_chars": 1500,
+    "agent_chars": 2500,
+    "catalog_line_max": 220,
     "listed_desc_max": 200,
     "skill_desc_max": 250
   }

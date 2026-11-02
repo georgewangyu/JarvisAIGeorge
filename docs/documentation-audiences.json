@@ -663,6 +663,10 @@
     {
       "path": "docs/crewmate-briefs.md",
       "audience": "agent-runtime"
+    },
+    {
+      "path": "plugins/jarvis-ai-george/agents/jarvis-ai-george.md",
+      "audience": "agent-runtime"
     }
   ]
 }

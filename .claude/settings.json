@@ -10,7 +10,8 @@
   },
   "enabledPlugins": {
     "jarvis-ai-george@jarvis-ai-george": true,
-    "george-coding-agent@jarvis-ai-george": true
+    "george-coding-agent@jarvis-ai-george": false,
+    "george-coding-agent@george-coding-agent": false
   },
   "permissions": {
     "allow": [

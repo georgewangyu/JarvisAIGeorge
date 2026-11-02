@@ -4551,6 +4551,21 @@ if [ -n "$CLAUDE_AGENT" ]; then
     exit 1
   fi
   LAUNCH=${LAUNCH/ claude / claude --agent $CLAUDE_AGENT }
+  # Launch shape: a plugin agent's worker gets core plus only its own
+  # extension, every other known extension off (bin/jarvis-plugins-for.sh;
+  # docs/jarvis-plugins.md "Skill listing budget"), merged into the worker's
+  # own --settings JSON so the attribution policy above is kept.
+  case "$CLAUDE_AGENT" in
+    *:*)
+      if [ -x "$SCRIPT_DIR/jarvis-plugins-for.sh" ]; then
+        plugin_shape=--manager
+        [ "${CLAUDE_AGENT%%:*}" = jarvis-ai-george ] || plugin_shape=${CLAUDE_AGENT%%:*}
+        if plugin_map=$("$SCRIPT_DIR/jarvis-plugins-for.sh" --map "$plugin_shape" 2>/dev/null); then
+          LAUNCH=${LAUNCH/\{\"feedbackDrafts\":\"off\",/\{\"feedbackDrafts\":\"off\",\"enabledPlugins\":$plugin_map,}
+        fi
+      fi
+      ;;
+  esac
 fi
 if [ "$HARNESS" = claude ] && [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
   LAUNCH="CLAUDE_CONFIG_DIR=$(shell_quote "$CLAUDE_CONFIG_DIR") $LAUNCH"

@@ -87,28 +87,49 @@ Codex CLI 0.166.0 strips every description and omits skills when its skills cont
 The user's other plugins share the same budget, so each Jarvis plugin keeps its share small and fixed.
 This is a different limit from the project-document byte budget, which truncates `AGENTS.md` (see `tests/fm-agents-md-size.test.sh`).
 
-The pattern, enforced by `tools/jarvis-build.py --check`:
+Routing has two levels, and each launch shape has its own budget, so adding extensions (a video agent, a writing agent, each with a hundred skills) never runs into a shared total.
 
-1. **One router per extension.** The build generates an always-listed router skill from the manifest: `<id>-skills` for an extension, `extension-catalog` for core. It lists every skill with a one-line summary (the first sentence of its description) and its file path. Nobody maintains the list by hand.
-2. **Listed skills.** Only the router, each agent's preload skills, and the manifest's optional `listed` array stay in the skill list.
-3. **Hidden skills.** Every other skill carries `disable-model-invocation: true`, which the build writes into the skill's frontmatter. Claude Code then drops it from the list, but it stays reachable: the model loads the router and reads `../<skill>/SKILL.md`. A user can still type its slash command. Generated agents get a session-start line naming their router.
-4. **Fixed budgets.** Listed descriptions are at most 200 characters, every description at most 250, and one plugin's listed entries (name plus description) at most 1,000 characters. The combined budget for core plus every known extension (vendored in `plugins/jarvis-ai-george/extensions/`) is 5,000 characters. All four numbers live in `jarvis-build.json` under `listing`. A manifest may declare a lower `listing_budget`, never a higher one.
-5. **Proof.** `tests/jarvis-skill-budget.test.sh` builds a synthetic extension with 100 skills. It checks that two are listed, all 100 are reachable through the router, listing all of them is refused, and the combined budget fails at six plugins and passes at four.
+```
+manager launch:  core only           -> extension-catalog: one line per agent, core skills
+worker launch:   core + its own ext  -> that extension's router and its few listed skills
+                                     -> every other skill of the extension, by path, via the router
+```
+
+1. **Level 1, the manager sees agents.** The manager launches with core on and every known extension off (the repo's `.claude/settings.json`, and `bin/jarvis-launch` from another folder). `extension-catalog`, generated from the vendored manifests in `plugins/jarvis-ai-george/extensions/`, has one short line per agent: what it does and when to dispatch it. It never lists extension skills or routers. The manager's skill list stays the same size; the catalog body grows by one line per agent and one install line per extension.
+2. **Level 2, a worker sees its own extension.** `bin/fm-spawn.sh --agent <plugin>:<agent>` gives the worker core plus only that plugin, and every other known extension off. It merges the map from `bin/jarvis-plugins-for.sh <plugin>` into the worker's `--settings`. The user's own settings are untouched, and each extension is switched under both marketplace names it can come from.
+3. **One router per extension.** The build generates an always-listed router skill from the manifest (`<id>-skills`). It lists every skill with a one-line summary (the first sentence of its description) and its file path. Nobody maintains the list by hand.
+4. **Listed and hidden skills.** Only the router, each agent's preload skills, and the manifest's optional `listed` array stay in the list. Every other skill carries `disable-model-invocation: true`, which the build writes into its frontmatter. Claude Code drops it from the list, and the model reaches it by loading the router and reading `../<skill>/SKILL.md`. A user can still type its slash command. Generated agents get a session-start line naming their router.
+5. **Budgets per launch shape** (`jarvis-build.json` `listing`):
+   - listed description at most 200 characters, any description at most 250;
+   - one extension's listed entries (name plus description) at most 1,000;
+   - manager shape (core's listed entries) at most 1,500;
+   - each agent's shape (core plus its own extension's capped share) at most 2,500;
+   - each catalog line at most 220.
+
+   An extension's build checks its own share; core's build checks the manager shape and every known agent's shape. A manifest may declare a lower `listing_budget`, never a higher one.
+6. **Proof.** `tests/jarvis-skill-budget.test.sh`:
+   - a 100-skill extension lists two skills and reaches all 100 through its router, and listing all 100 is refused;
+   - ten 100-skill extensions added one by one: the catalog gains one agent line each, the manager's listed share stays constant, every agent's shape fits, every skill is reachable through its own router, and nothing fails on extension count;
+   - the repo settings are the manager shape.
+
+   Live check (Claude Code 2.1.316): the manager shape listed only the three core skills. A coding worker's shape added the coding router and its four listed skills, and the hidden skills stayed hidden.
 
 In a home, the FirstMate skills under `.agents/skills/` follow the same rule: the user-invocable ones (`afk`, `ahoy`, `bearings`, `quiet`, `stow`, `updatefirstmate`) stay listed, and the agent-only ones are hidden with `AGENTS.md` section 13 as their router.
 
 ### Tools that cannot hide skills or enable plugins per launch
 
-Claude Code can scope an extension to one worker (`--settings '{"enabledPlugins":{...}}'`), so a worker sees only the plugins it needs.
-Codex cannot enable a plugin for one launch, and it does not honor `disable-model-invocation`, so every installed skill competes for its budget.
-The fallback there is router-only discovery plus explicit loading:
+Claude Code scopes plugins per launch (`--settings` `enabledPlugins`), which is what level 2 relies on.
+Codex has no per-launch plugin switch that we know of, and it does not honor `disable-model-invocation`, so every installed plugin's skills compete in every Codex session, manager and worker alike.
+The fallback there is to keep the set small and route explicitly:
+
+- Install in Codex only the extensions you use there; the shared budget then grows with that set, not with everything known.
 
 - A Codex worker's brief names its role and execution skills explicitly on the first lines (`Load $role-coding first`, then `$incremental-implementation` and the others it needs). An explicit `$skill` mention does not depend on the listing.
 - Anything else, it finds through the plugin's router.
 - `bin/fm-skill-catalog-check.sh` reads a worker's startup screen, and `bin/fm-spawn.sh` runs it after every Codex spawn. When the warning panel is there, the spawn prints `SKILL_CATALOG_INCOMPLETE:`, and the manager makes sure the brief names the skills the task needs.
 - The user's global skills are never deleted, disabled or rewritten. To free budget, uninstall or disable unused plugins with the tool's own commands.
 
-Verify on a personal laptop (Codex is not run on the work machine): that an explicit `$skill` mention loads a skill Codex omitted from the list, and the exact wording of its overflow panel.
+Verify on a personal laptop (Codex is not run on the work machine): whether Codex has a per-launch plugin switch (if it has, wire it like level 2), that an explicit `$skill` mention loads a skill Codex omitted from the list, and the exact wording of its overflow panel.
 
 ## Writing an extension
 
@@ -117,7 +138,7 @@ Verify on a personal laptop (Codex is not run on the work machine): that an expl
 3. Skill split: core holds only what the manager itself uses. Everything a worker uses lives in its extension. Mention a skill from another plugin only as optional ("if installed").
 4. In this repo, classify every new Markdown or text file in `docs/documentation-audiences.json` (the inherited doc-audience check fails otherwise).
 5. Add the repo to `peers` in this repo's `jarvis-build.json` and run `--fetch` so the catalog and the marketplace list it.
-6. Keep within the skill listing budget above: list only the skills the agents preload or that must be auto-discovered, keep descriptions short, and let the generated router index the rest. A new extension with a hundred skills costs the same listed budget as one with five.
+6. Keep within the skill listing budget above: give every agent a unique name (its role skill is `role-<agent>`), a one-line `summary` and `dispatch_when` for the catalog, list only the skills the agents preload or that must be auto-discovered, keep descriptions short, and let the generated router index the rest. A new extension with a hundred skills costs the manager one catalog line per agent.
 
 ## What loads where (Claude Code, verified)
 
