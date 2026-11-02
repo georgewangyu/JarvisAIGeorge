@@ -11,8 +11,20 @@
 # A no-op outside cmux or when the cmux CLI or socket is unavailable. Never
 # blocks the session: always exits 0 with no output. One pill key ("jarvis"),
 # written only when the state changes (cached per workspace under $TMPDIR).
+# Each cmux call is capped at JARVIS_SIDEBAR_CMUX_SECS (default 2) so the hook
+# ends inside the shortest harness hook budget (Codex clamps SessionEnd to 3s;
+# hooks.json asks for 3 there and 5 elsewhere) even when cmux hangs.
 # Codex sessions do not run hooks; the Workers board covers them by polling.
 set -u
+cmux_capped() {  # <args...>: run cmux, killed after the cap; never fails
+  CMUX_QUIET=1 "$bin" "$@" >/dev/null 2>&1 &
+  local pid=$! killer
+  ( sleep "${JARVIS_SIDEBAR_CMUX_SECS:-2}"; kill "$pid" 2>/dev/null ) &
+  killer=$!
+  wait "$pid" 2>/dev/null || true
+  kill "$killer" 2>/dev/null || true
+  wait "$killer" 2>/dev/null || true
+}
 input=$(cat 2>/dev/null || true)
 ws=${CMUX_WORKSPACE_ID:-}
 [ -n "$ws" ] || exit 0
@@ -28,7 +40,7 @@ fi
 case "$event" in
   UserPromptSubmit|PreToolUse) state=working; icon=bolt.fill; color='#3B82F6' ;;
   PermissionRequest|Notification) state='needs you'; icon=hand.raised.fill; color='#F59E0B' ;;
-  Stop) state=done; icon=checkmark.circle.fill; color='#6B7280' ;;
+  Stop) state='done'; icon=checkmark.circle.fill; color='#6B7280' ;;
   SessionStart) state=ready; icon=circle; color='#6B7280' ;;
   SessionEnd) state=clear ;;
   *) exit 0 ;;
@@ -40,9 +52,9 @@ prev=$(cat "$cache" 2>/dev/null || true)
 printf '%s' "$state" > "$cache" 2>/dev/null || true
 
 if [ "$state" = clear ]; then
-  CMUX_QUIET=1 "$bin" clear-status jarvis --workspace "$ws" >/dev/null 2>&1 || true
+  cmux_capped clear-status jarvis --workspace "$ws"
   rm -f "$cache" 2>/dev/null || true
 else
-  CMUX_QUIET=1 "$bin" set-status jarvis "$state" --icon "$icon" --color "$color" --priority 90 --workspace "$ws" >/dev/null 2>&1 || true
+  cmux_capped set-status jarvis "$state" --icon "$icon" --color "$color" --priority 90 --workspace "$ws"
 fi
 exit 0
