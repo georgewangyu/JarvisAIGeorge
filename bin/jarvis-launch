@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# bin/jarvis-launch - start Jarvis, the manager, from any folder.
+#
+# The folder you start in stays the working directory, so its own CLAUDE.md
+# (and the AGENTS.md it imports) or AGENTS.md chain loads as usual; this home
+# (the clone that holds this script) is the engine. docs/install.md "Launch
+# shortcut" owns the operator flow; the manager's "Started from another folder"
+# section owns what it does at start.
+#
+# Usage:
+#   jarvis-launch [--claude|--codex] [--print-settings] [-- <extra tool args>]
+#
+# Claude Code (default when `claude` is on PATH):
+#   - inside the home: plain `claude`, so the repo's .claude/settings.json
+#     (project agent, hooks, plugins) applies exactly as before;
+#   - anywhere else: `claude --agent jarvis-ai-george:jarvis-ai-george
+#     --settings <file>`, where <file> is the home's .claude/settings.json with
+#     every "$CLAUDE_PROJECT_DIR" hook path rewritten to "$JARVIS_HOME", the
+#     manager write guard added for MCP tools (plugin agents ignore agent
+#     hooks), and only the home's setup script pre-approved. The file is
+#     regenerated on every launch under the home's state/.
+# Codex: starts `codex` in the folder with a first prompt that loads
+#   $role-jarvis and the home contract. Verify on a personal laptop.
+#
+# Environment it sets for the session: JARVIS_HOME (this home), FM_HOME (the
+# same, so fleet scripts, state and bin resolve), JARVIS_LAUNCHED=1.
+# --print-settings prints the generated Claude settings and exits.
+
+set -u
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+JARVIS_HOME=$(cd "$SCRIPT_DIR/.." && pwd)
+export JARVIS_HOME
+export FM_HOME="${FM_HOME:-$JARVIS_HOME}"
+export JARVIS_LAUNCHED=1
+
+harness=
+print_settings=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --claude) harness=claude; shift ;;
+    --codex) harness=codex; shift ;;
+    --print-settings) print_settings=1; shift ;;
+    --) shift; break ;;
+    -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) break ;;
+  esac
+done
+if [ -z "$harness" ]; then
+  harness=$("$SCRIPT_DIR/jarvis-setup.sh" harness 2>/dev/null || echo claude)
+fi
+
+inside_home() {
+  local here
+  here=$(pwd -P)
+  case "$here/" in "$(cd "$JARVIS_HOME" && pwd -P)/"*) return 0 ;; esac
+  return 1
+}
+
+claude_settings() {  # writes the launch settings file, prints its path
+  local out="$FM_HOME/state/jarvis-launch-settings.json"
+  mkdir -p "$(dirname "$out")"
+  python3 - "$JARVIS_HOME" "$out" <<'PY'
+import json, sys
+home, out = sys.argv[1], sys.argv[2]
+src = json.load(open(f"{home}/.claude/settings.json"))
+data = {k: v for k, v in src.items() if k in ("extraKnownMarketplaces", "enabledPlugins")}
+text = json.dumps(src.get("hooks", {}))
+text = text.replace('\\"$CLAUDE_PROJECT_DIR\\"', '\\"$JARVIS_HOME\\"').replace("$CLAUDE_PROJECT_DIR", "$JARVIS_HOME")
+hooks = json.loads(text)
+guard = '"$JARVIS_HOME"/bin/jarvis-manager-write-guard.sh'
+hooks.setdefault("PreToolUse", []).append({"matcher": "mcp__.*", "hooks": [{"type": "command", "command": guard}]})
+data["hooks"] = hooks
+data["permissions"] = {"allow": [f"Bash({home}/bin/jarvis-setup.sh:*)", "Bash($JARVIS_HOME/bin/jarvis-setup.sh:*)"]}
+with open(out, "w") as fh:
+    json.dump(data, fh, indent=2)
+    fh.write("\n")
+PY
+  printf '%s' "$out"
+}
+
+case "$harness" in
+  claude)
+    command -v claude >/dev/null 2>&1 || { echo "jarvis-launch: claude is not on PATH (see docs/install.md)" >&2; exit 127; }
+    if [ "$print_settings" = 1 ]; then
+      cat "$(claude_settings)"
+      exit 0
+    fi
+    if inside_home; then
+      exec claude "$@"
+    fi
+    settings=$(claude_settings) || { echo "jarvis-launch: could not write the launch settings (python3 needed)" >&2; exit 1; }
+    exec claude --agent jarvis-ai-george:jarvis-ai-george --settings "$settings" "$@"
+    ;;
+  codex)
+    command -v codex >/dev/null 2>&1 || { echo "jarvis-launch: codex is not on PATH (see docs/install.md)" >&2; exit 127; }
+    if inside_home; then
+      exec codex "$@"
+    fi
+    exec codex "$@" "Load \$role-jarvis first. JARVIS_HOME is $JARVIS_HOME: read $JARVIS_HOME/AGENTS.md as the home contract and run $JARVIS_HOME/bin/jarvis-setup.sh detect, then follow the role."
+    ;;
+  *) echo "jarvis-launch: unknown harness '$harness' (use --claude or --codex)" >&2; exit 2 ;;
+esac

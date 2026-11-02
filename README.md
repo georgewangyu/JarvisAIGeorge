@@ -50,7 +50,8 @@ git clone https://github.com/georgewangyu/JarvisAIGeorge ~/jarvis
 cd ~/jarvis && claude
 ```
 
-Trust the folder, then answer Jarvis in chat: cmux tabs or not, which extensions to install (the coding extension is recommended), and which missing tools to install. Jarvis installs nothing without your yes.
+Trust the folder, then answer Jarvis in chat: cmux tabs or not, what to call you, whether to add a launch shortcut, which extensions to install (the coding extension is recommended), and which missing tools to install. Jarvis installs nothing and edits no shell file without your yes.
+With the shortcut, type `jarvis` to start it from your own workspace folder, so that folder's `CLAUDE.md` or `AGENTS.md` applies too ([Launch shortcut](docs/install.md#launch-shortcut)).
 The full steps, the checklist and troubleshooting for each manual step are in [`docs/install.md`](docs/install.md).
 
 Codex works too: the same three lines with `codex` in place of `claude`. Trust the folder and its hooks, and Jarvis asks the same questions. What differs (role from a skill, plugins installed on your yes, reviewer read-only by instruction) and a test checklist: [Using Codex](docs/install.md#using-codex).

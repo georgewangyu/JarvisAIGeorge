@@ -32,6 +32,18 @@
 #   bin/jarvis-setup.sh update-check    bounded network check: is the home behind
 #                                       origin, is plugin auto-update on. Quiet
 #                                       when current. Off: config/update-check=off
+#   bin/jarvis-setup.sh shortcut add [--name N] [--folder DIR] [--rc FILE]...
+#                                       write a marked, idempotent alias block
+#                                       (default name jarvis) to ~/.zshrc and
+#                                       ~/.bashrc: alias N='cd DIR && <home>/bin/jarvis-launch'.
+#                                       Run only after the user approves; prints
+#                                       the undo command
+#   bin/jarvis-setup.sh shortcut remove [--name N] [--rc FILE]...
+#   bin/jarvis-setup.sh shortcut none   record "no shortcut" so setup stops asking
+#   bin/jarvis-setup.sh address <name>|none
+#                                       how Jarvis addresses the user, in the
+#                                       gitignored config/user-address (none: no
+#                                       special address, just "you")
 #   bin/jarvis-setup.sh plugin-autoupdate on|off
 #                                       let Claude Code update the marketplace and
 #                                       its plugins at startup (written to the
@@ -170,6 +182,8 @@ cmd_detect() {
   p=$(missing_plugins)
   [ -n "$p" ] && gaps+=("plugins: $p")
   extensions_chosen || gaps+=("extensions not chosen (offer: $EXTENSIONS)")
+  [ -f "$CONFIG/user-address" ] || gaps+=("how to address the user not asked")
+  [ -f "$CONFIG/shortcut" ] || gaps+=("launch shortcut not offered")
   t=$(missing_tools)
   [ -n "$t" ] && gaps+=("tools: $t")
   if [ "$b" = cmux ]; then
@@ -206,6 +220,16 @@ cmd_status() {
     echo "info: extensions not installed: $e (offer when work needs one: bin/jarvis-setup.sh extensions <id>)"
   else
     echo "ok: extensions $EXTENSIONS"
+  fi
+  if [ -f "$CONFIG/user-address" ]; then
+    echo "ok: address $(cat "$CONFIG/user-address")"
+  else
+    echo "JARVIS_SETUP: MISSING address. Ask \"What should Jarvis call you?\" (default: no special address); record it with bin/jarvis-setup.sh address <name>|none"
+  fi
+  if [ -f "$CONFIG/shortcut" ]; then
+    echo "ok: shortcut $(cat "$CONFIG/shortcut")"
+  else
+    echo "JARVIS_SETUP: MISSING shortcut choice. Ask whether to add a launch shortcut (name, default jarvis) and which folder it starts in (default: the folder setup runs from, else your home folder); after a yes run bin/jarvis-setup.sh shortcut add --name <n> --folder <dir>, or shortcut none (help: $DOC#launch-shortcut)"
   fi
   t=$(missing_tools)
   if [ -n "$t" ]; then
@@ -285,6 +309,86 @@ cmd_extensions() {
   else
     echo "ok: extensions installed: $* (new workers load them; no restart needed)"
   fi
+}
+
+cmd_address() {
+  [ "$#" -ge 1 ] || die "usage: address <name>|none"
+  mkdir -p "$CONFIG"
+  local v="$*"
+  case "$v" in *$'\n'*) die "address must be one line" ;; esac
+  printf '%s\n' "$v" > "$CONFIG/user-address"
+  if [ "$v" = none ]; then echo "ok: no special address (Jarvis says \"you\")"; else echo "ok: Jarvis will call you $v"; fi
+}
+
+shortcut_rcs() {  # prints the rc files to edit, one per line (given or the defaults)
+  if [ "${#SHORTCUT_RCS[@]}" -gt 0 ]; then
+    printf '%s\n' "${SHORTCUT_RCS[@]}"
+    return
+  fi
+  local found=0 f
+  for f in "$HOME/.zshrc" "$HOME/.bashrc"; do
+    [ -f "$f" ] && { printf '%s\n' "$f"; found=1; }
+  done
+  if [ "$found" = 0 ]; then
+    case "$(basename "${SHELL:-zsh}")" in bash) printf '%s\n' "$HOME/.bashrc" ;; *) printf '%s\n' "$HOME/.zshrc" ;; esac
+  fi
+}
+
+shortcut_strip() {  # <rc> <name>: remove that shortcut's marked block, if any
+  local rc=$1 name=$2 tmp
+  [ -f "$rc" ] || return 0
+  tmp=$(mktemp "${TMPDIR:-/tmp}/jarvis-rc.XXXXXX") || die "mktemp failed"
+  awk -v b="# >>> jarvis-launch shortcut: $name " -v e="# <<< jarvis-launch shortcut: $name <<<" '
+    index($0, b) == 1 { skip = 1; next }
+    skip && $0 == e { skip = 0; next }
+    !skip { print }' "$rc" > "$tmp" && cat "$tmp" > "$rc"
+  rm -f "$tmp"
+}
+
+cmd_shortcut() {
+  local sub=${1:-} name=jarvis folder='' rc
+  [ -n "$sub" ] && shift
+  SHORTCUT_RCS=()
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --name) name=${2:-}; shift 2 ;;
+      --folder) folder=${2:-}; shift 2 ;;
+      --rc) SHORTCUT_RCS+=("${2:-}"); shift 2 ;;
+      *) die "unknown shortcut option '$1'" ;;
+    esac
+  done
+  printf '%s' "$name" | grep -Eq '^[A-Za-z_][A-Za-z0-9_-]*$' || die "shortcut name must be a plain word: '$name'"
+  mkdir -p "$CONFIG"
+  case "$sub" in
+    add)
+      [ -n "$folder" ] || folder=$PWD
+      folder=$(cd "$folder" 2>/dev/null && pwd) || die "folder does not exist"
+      case "$folder$ROOT" in *"'"*) die "paths with a single quote are not supported" ;; esac
+      while read -r rc; do
+        shortcut_strip "$rc" "$name"
+        {
+          printf '# >>> jarvis-launch shortcut: %s (added by bin/jarvis-setup.sh; undo: %s/bin/jarvis-setup.sh shortcut remove --name %s) >>>\n' "$name" "$ROOT" "$name"
+          printf "alias %s='cd %s && %s/bin/jarvis-launch'\n" "$name" "$folder" "$ROOT"
+          printf '# <<< jarvis-launch shortcut: %s <<<\n' "$name"
+        } >> "$rc"
+        echo "ok: shortcut $name in $rc"
+      done < <(shortcut_rcs)
+      printf '%s %s\n' "$name" "$folder" > "$CONFIG/shortcut"
+      echo "Open a new terminal (or source the file), then type: $name"
+      echo "Undo: $ROOT/bin/jarvis-setup.sh shortcut remove --name $name"
+      ;;
+    remove)
+      while read -r rc; do
+        shortcut_strip "$rc" "$name" && echo "ok: removed shortcut $name from $rc"
+      done < <(shortcut_rcs)
+      rm -f "$CONFIG/shortcut"
+      ;;
+    none)
+      echo none > "$CONFIG/shortcut"
+      echo "ok: no shortcut (add one later with bin/jarvis-setup.sh shortcut add)"
+      ;;
+    *) die "usage: shortcut add|remove|none [--name N] [--folder DIR] [--rc FILE]" ;;
+  esac
 }
 
 cmd_cmux_check() {
@@ -374,5 +478,7 @@ case "${1:-}" in
   cmux-check) cmd_cmux_check ;;
   update-check) cmd_update_check ;;
   plugin-autoupdate) shift; cmd_plugin_autoupdate "$@" ;;
+  shortcut) shift; cmd_shortcut "$@" ;;
+  address) shift; cmd_address "$@" ;;
   *) awk 'NR>1 && !/^#/ {exit} NR>1 {sub(/^# ?/, ""); print}' "$0"; exit 2 ;;
 esac

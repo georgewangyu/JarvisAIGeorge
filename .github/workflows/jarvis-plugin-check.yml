@@ -33,6 +33,7 @@ jobs:
           set -eu
           bash tests/jarvis-setup.test.sh
           bash tests/jarvis-manager-write-guard.test.sh
+          bash tests/jarvis-launch.test.sh
       - name: AGENTS.md fits the project-document budget
         run: bash tests/fm-agents-md-size.test.sh
       - name: Skill listing budget and catalog diagnostic

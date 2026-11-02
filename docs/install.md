@@ -20,9 +20,11 @@ Using Codex instead: the same three lines with `codex` in place of `claude`. See
 | 1 | Theme, security notes | Claude Code, first run on this machine only | Your choice, then Enter |
 | 2 | Trust this folder (lists the one pre-approved command, `bin/jarvis-setup.sh`) | Claude Code | Yes. Trust also adds the Jarvis marketplace and loads the core plugin, with no extra prompt |
 | 3 | Use cmux tabs for workers? | Jarvis | Yes for a Jarvis tab plus a Workers group with a live board; no for tmux or auto |
-| 4 | Which extensions to install (coding extension recommended) | Jarvis | Yes installs `george-coding-agent` (coding worker, read-only reviewer, planning, spec and review skills) |
-| 5 | Which missing tools to install, one command each | Jarvis | Approve each. Jarvis installs nothing without a yes |
-| 6 | cmux socket access, only if the check fails | Jarvis | The one manual step below |
+| 4 | What should Jarvis call you? (default: no special address) | Jarvis | A name, or nothing for plain "you". Stored in the home's gitignored `config/user-address` |
+| 5 | Add a launch shortcut? Name (default `jarvis`) and the folder it starts in | Jarvis | Yes writes a marked alias block to `~/.zshrc` and `~/.bashrc`; see "Launch shortcut" |
+| 6 | Which extensions to install (coding extension recommended) | Jarvis | Yes installs `george-coding-agent` (coding worker, read-only reviewer, planning, spec and review skills) |
+| 7 | Which missing tools to install, one command each | Jarvis | Approve each. Jarvis installs nothing without a yes |
+| 8 | cmux socket access, only if the check fails | Jarvis | The one manual step below |
 
 On later starts Jarvis is quiet unless something needs a call (a missing piece, an update).
 
@@ -54,6 +56,36 @@ On later starts Jarvis is quiet unless something needs a call (a missing piece, 
 - [ ] cmux only: the manager tab is renamed **JarvisAIGeorge**, pinned and colored, and a **JarvisAIGeorge: Workers** group with a board appears on the first dispatch.
 - [ ] Dispatch a tiny task (for example, a `hello.sh` in a throwaway repo under `projects/`): a worker tab appears, its pill goes working then done, Jarvis reports the result, and the tab closes after the change lands.
 - [ ] Ask Jarvis to post a message or update a ticket through an MCP tool: the write guard blocks it and Jarvis offers to dispatch a worker instead.
+
+## Launch shortcut
+
+Start Jarvis from your own workspace folder, so that folder's `CLAUDE.md` (and the `AGENTS.md` it imports) or `AGENTS.md` chain loads as usual, while the clone stays the engine.
+
+First-run setup offers the shortcut. On your yes it writes this block to `~/.zshrc` and `~/.bashrc` (marked, and replaced in place if you run it again):
+
+```sh
+# >>> jarvis-launch shortcut: jarvis (added by bin/jarvis-setup.sh; undo: ~/jarvis/bin/jarvis-setup.sh shortcut remove --name jarvis) >>>
+alias jarvis='cd ~/work && ~/jarvis/bin/jarvis-launch'
+# <<< jarvis-launch shortcut: jarvis <<<
+```
+
+By hand: `~/jarvis/bin/jarvis-setup.sh shortcut add --name jarvis --folder ~/work`. Undo: `~/jarvis/bin/jarvis-setup.sh shortcut remove --name jarvis`.
+Nothing edits a shell file without your yes.
+
+What `jarvis-launch` does:
+
+- Inside the clone it is plain `claude`, so everything above applies unchanged.
+- Anywhere else it keeps your folder as the working directory and starts `claude --agent jarvis-ai-george:jarvis-ai-george` (the core plugin's manager). It sets `JARVIS_HOME` and `FM_HOME` to the clone, and passes the clone's hooks with `--settings`: session start, setup check, guards and the MCP write guard, all run from the clone.
+- Jarvis then reads `$JARVIS_HOME/AGENTS.md` as the home contract before any fleet action. Your folder's instructions decide how it talks and works; the home contract decides fleet safety.
+- If another session already holds the home's lock, the new one stays read-only. Starting Jarvis never takes over a running fleet.
+- Codex: `jarvis-launch --codex` starts `codex` in your folder with a first prompt that loads `$role-jarvis` and the home contract. Verify this on your own machine.
+
+Loading the `role-jarvis` skill by itself, outside a home and without the launcher, gives you the manager without a fleet: it plans and routes, but runs no hooks, takes no lock and starts no workers.
+
+Checks:
+
+- [ ] In your folder, `jarvis` starts a session whose first answer knows your folder's instructions and says it is Jarvis.
+- [ ] The setup line or update check appears, and `echo $JARVIS_HOME` in that session prints the clone path.
 
 ## Updates
 
@@ -197,4 +229,6 @@ Claude Code exits. Run `claude` in the folder again and trust it; nothing was in
 ### Jarvis did not start (plain Claude instead)
 
 Check that you started `claude` inside the clone (the `agent` setting is per folder), or use `claude --agent jarvis-ai-george`.
+From any other folder use the launch shortcut (`jarvis-launch`); plain `claude` there is not Jarvis.
+`jarvis-launch` says `claude is not on PATH`, or the plugin agent is missing: install the core plugin (`claude plugin install jarvis-ai-george@jarvis-ai-george`) and retry.
 `claude` in a project under `projects/` starts the default agent on purpose, so workers there are not managers.

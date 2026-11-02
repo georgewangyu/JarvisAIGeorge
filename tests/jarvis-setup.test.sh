@@ -133,6 +133,34 @@ test_codex_sessionstart_hook() {
   pass "jarvis-setup: the tracked Codex SessionStart hook runs detect for the Codex harness"
 }
 
+test_address_and_shortcut() {
+  local h="$TMP_ROOT/sc" c="$TMP_ROOT/sc-claude" fake="$TMP_ROOT/sc-home" out before
+  mkdir -p "$h" "$c" "$fake/work"
+  out=$(run "$h" "$c" detect)
+  printf '%s' "$out" | grep -q 'how to address the user not asked' || fail "detect must ask how to address the user: '$out'"
+  printf '%s' "$out" | grep -q 'launch shortcut not offered' || fail "detect must offer the launch shortcut: '$out'"
+  run "$h" "$c" address none >/dev/null
+  [ "$(cat "$h/config/user-address")" = none ] || fail "address none must be recorded"
+  printf 'export KEEP=1\n' > "$fake/.zshrc"
+  printf '# bash\n' > "$fake/.bashrc"
+  HOME="$fake" run "$h" "$c" shortcut add --name jv --folder "$fake/work" > "$TMP_ROOT/sc.out" || fail "shortcut add must succeed"
+  grep -q 'Undo: .*shortcut remove --name jv' "$TMP_ROOT/sc.out" || fail "shortcut add must print the undo command"
+  for rc in "$fake/.zshrc" "$fake/.bashrc"; do
+    grep -qx "alias jv='cd $fake/work && $ROOT/bin/jarvis-launch'" "$rc" || fail "$rc must carry the alias: $(cat "$rc")"
+  done
+  before=$(cat "$fake/.zshrc")
+  HOME="$fake" run "$h" "$c" shortcut add --name jv --folder "$fake/work" >/dev/null
+  [ "$(cat "$fake/.zshrc")" = "$before" ] || fail "a second add must be idempotent"
+  [ "$(cat "$h/config/shortcut")" = "jv $fake/work" ] || fail "the shortcut choice must be recorded"
+  HOME="$fake" run "$h" "$c" shortcut remove --name jv >/dev/null
+  [ "$(cat "$fake/.zshrc")" = "export KEEP=1" ] || fail "remove must leave the rest of the file as it was: $(cat "$fake/.zshrc")"
+  grep -q jarvis-launch "$fake/.bashrc" && fail "remove must clear every rc file"
+  run "$h" "$c" shortcut add --name 'bad name' >/dev/null 2>&1 && fail "a name with a space must be refused"
+  out=$(run "$h" "$c" shortcut none; run "$h" "$c" detect)
+  printf '%s' "$out" | grep -q 'launch shortcut not offered\|address the user' && fail "recorded choices must silence both questions: '$out'"
+  pass "jarvis-setup: address and shortcut are asked once; the alias block is marked, idempotent and removable"
+}
+
 test_backend_choice
 test_detect_names_gaps
 test_update_check_off
@@ -140,3 +168,4 @@ test_codex_install_commands
 test_claude_install_commands
 test_installed_from_either_marketplace
 test_codex_sessionstart_hook
+test_address_and_shortcut

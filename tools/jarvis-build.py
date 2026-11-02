@@ -43,7 +43,7 @@ CLAUDE_AGENT_FIELDS = [
     "maxTurns", "skills", "mcpServers", "hooks", "memory", "background",
     "omitClaudeMd", "effort", "color", "initialPrompt",
 ]
-BUILD_ONLY_FIELDS = {"rules", "standalone", "role_skill", "summary", "startup"}
+BUILD_ONLY_FIELDS = {"rules", "standalone", "role_skill", "summary", "startup", "plugin_variant"}
 SKILL_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 DASHES = re.compile("[–—]")
 
@@ -301,7 +301,22 @@ class Repo:
         project_dir = self.config.get("project_agents_dir")
         if standalone and project_dir:
             self.out(f"{project_dir.strip('/')}/{name}.md", text.rstrip() + "\n")
+        if standalone and data.get("plugin_variant"):
+            self.build_plugin_variant(name, data, fields, body, note, start)
         self.build_role_skill(name, data, body, rel, man, preload)
+
+    def build_plugin_variant(self, name, data, fields, body, note, start):
+        """The same agent as a plugin agent (`<plugin>:<name>`), for a launch from a folder
+        that has no project agent. Plugin agents ignore hooks and initialPrompt, so the
+        launcher passes the hooks and the startup step moves into the body."""
+        pfields = {k: v for k, v in fields.items() if k not in PLUGIN_IGNORED}
+        pstart = start
+        if data.get("startup"):
+            pstart = (start.rstrip() + "\n\n" if start else "## Session start\n\n") + \
+                "Before your first reply: " + data["startup"].strip() + "\n"
+        text = (emit_frontmatter(pfields) + f"\n<!-- {note} -->\n\n" + body.rstrip() + "\n\n"
+                + (pstart + "\n" if pstart else "") + self.rules_block(data))
+        self.out(self.prel("agents", f"{name}.md"), text.rstrip() + "\n")
 
     def build_role_skill(self, name, data, body, rel, man, preload):
         skill = self.role_skill_name(name, data)
