@@ -39,7 +39,7 @@ On later starts Jarvis is quiet unless something needs a call (a missing piece, 
 1. **Clone and start.** Run the three lines above in a terminal (in cmux if you want cmux tabs).
 2. **Trust the folder.** Claude Code asks once. The folder's settings register the `jarvis-ai-george` marketplace, enable the core and coding plugins, turn on the setup check, and pre-approve only `bin/jarvis-setup.sh`.
 3. **First-time setup.** A session start hook runs `bin/jarvis-setup.sh detect` (fast, read-only, no network, no installs). When anything is missing it tells Jarvis to run setup now. Jarvis then:
-   1. runs `bin/jarvis-setup.sh status` and tells you what is missing;
+   1. runs `bin/jarvis-setup.sh status` and tells you what is missing (status also shows, on separate lines, the saved backend choice, the terminal you are in, and where new workers will spawn, since a saved choice wins over the terminal);
    2. asks about cmux tabs and records the answer (`config/backend`, and `config/cmux-layout` = `workers` for cmux);
    3. offers the known extensions, coding recommended, and on your yes runs `claude plugin install george-coding-agent@jarvis-ai-george` itself;
    4. lists each missing tool with its exact install command (the fleet toolchain: `gh-axi`, `no-mistakes`, `chrome-devtools-axi`, `quota-axi`, `tasks-axi`, and `jq` and cmux for cmux) and runs only what you approve;

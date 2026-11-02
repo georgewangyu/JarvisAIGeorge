@@ -197,6 +197,37 @@ cmd_detect() {
   echo "JARVIS_FIRST_RUN: setup is incomplete ($joined). Run first-time setup now: follow the \"First-time setup\" section of your instructions, starting with bin/jarvis-setup.sh status. Ask before every install. Help: $DOC"
 }
 
+# Three separate facts, from FirstMate's own resolver (bin/fm-backend.sh) so the
+# precedence is never re-derived here: the saved choice, the terminal this
+# session is in, and where a new worker spawns by default (FM_BACKEND, else
+# config/backend, else the detected terminal, else tmux). A task's explicit
+# --backend can still differ. Read-only: nothing here changes the saved choice.
+backend_explain() {
+  local saved detected effective
+  saved=none
+  [ -f "$CONFIG/backend" ] && saved=$(tr -d '[:space:]' < "$CONFIG/backend")
+  # shellcheck disable=SC1091  # sourced from this script's own directory
+  detected=$( (FM_HOME="$HOME_DIR" . "$SCRIPT_DIR/fm-backend.sh" >/dev/null 2>&1 \
+    && fm_backend_detect >/dev/null 2>&1 && printf '%s' "$FM_BACKEND_DETECTED") 2>/dev/null )
+  # shellcheck disable=SC1091  # sourced from this script's own directory
+  effective=$( (FM_HOME="$HOME_DIR" . "$SCRIPT_DIR/fm-backend.sh" >/dev/null 2>&1 \
+    && fm_backend_name 2>/dev/null) 2>/dev/null )
+  echo "ok: backend saved choice: ${saved:-none}$([ "$saved" = none ] && printf ' (auto)' || printf ' (config/backend)')"
+  echo "ok: terminal detected: ${detected:-none (not inside tmux, herdr or cmux)}"
+  local why
+  if [ -n "${FM_BACKEND:-}" ]; then
+    why="FM_BACKEND is set for this session"
+  elif [ "$saved" != none ]; then
+    why="the saved choice wins"
+    [ -n "$detected" ] && [ "$detected" != "$saved" ] && why="the saved choice wins over the $detected terminal you are in"
+  elif [ -n "$detected" ]; then
+    why="no saved choice, so the detected terminal"
+  else
+    why="no saved choice and no detected terminal, so the default"
+  fi
+  echo "ok: new workers spawn in: ${effective:-unknown} ($why; a task's own --backend can differ)"
+}
+
 cmd_status() {
   local b p t c
   echo "ok: harness $HARNESS"
@@ -205,6 +236,7 @@ cmd_status() {
     echo "JARVIS_SETUP: MISSING backend choice (ask the user: use cmux tabs? then bin/jarvis-setup.sh backend cmux|tmux|auto)"
   else
     echo "ok: backend $b"
+    backend_explain
   fi
   p=$(missing_plugins)
   if [ -n "$p" ]; then

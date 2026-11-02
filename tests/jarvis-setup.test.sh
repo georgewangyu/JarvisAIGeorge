@@ -161,6 +161,29 @@ test_address_and_shortcut() {
   pass "jarvis-setup: address and shortcut are asked once; the alias block is marked, idempotent and removable"
 }
 
+test_status_explains_backend() {
+  local h="$TMP_ROOT/bk" c="$TMP_ROOT/bk-claude" out
+  mkdir -p "$h/config" "$c"
+  st() { env -u TMUX -u HERDR_ENV -u ZELLIJ -u FM_BACKEND CMUX_WORKSPACE_ID=ws-test "$@"; }
+  echo herdr > "$h/config/backend"
+  out=$(st JARVIS_HARNESS=claude FM_HOME="$h" CLAUDE_CONFIG_DIR="$c" "$SETUP" status)
+  printf '%s\n' "$out" | grep -qx 'ok: backend saved choice: herdr (config/backend)' || fail "status must show the saved choice: $out"
+  printf '%s\n' "$out" | grep -qx 'ok: terminal detected: cmux' || fail "status must show the detected terminal: $out"
+  printf '%s\n' "$out" | grep -q '^ok: new workers spawn in: herdr (the saved choice wins over the cmux terminal' \
+    || fail "a saved herdr choice in cmux must spawn in herdr and say why: $out"
+  printf '%s\n' "$out" | grep -q "a task's own --backend can differ" || fail "status must say a per-task override can differ"
+  [ "$(cat "$h/config/backend")" = herdr ] || fail "status must not change the saved choice"
+  rm "$h/config/backend"
+  echo auto > "$h/config/jarvis-backend"
+  out=$(st JARVIS_HARNESS=claude FM_HOME="$h" CLAUDE_CONFIG_DIR="$c" "$SETUP" status)
+  printf '%s\n' "$out" | grep -qx 'ok: backend saved choice: none (auto)' || fail "auto must show no saved choice: $out"
+  printf '%s\n' "$out" | grep -q '^ok: new workers spawn in: cmux (no saved choice, so the detected terminal' \
+    || fail "auto in cmux must spawn in cmux: $out"
+  out=$(st FM_BACKEND=tmux JARVIS_HARNESS=claude FM_HOME="$h" CLAUDE_CONFIG_DIR="$c" "$SETUP" status)
+  printf '%s\n' "$out" | grep -q '^ok: new workers spawn in: tmux (FM_BACKEND is set' || fail "FM_BACKEND must still win: $out"
+  pass "jarvis-setup: status shows the saved backend, the detected terminal and where new workers spawn, separately"
+}
+
 test_backend_choice
 test_detect_names_gaps
 test_update_check_off
@@ -169,3 +192,4 @@ test_claude_install_commands
 test_installed_from_either_marketplace
 test_codex_sessionstart_hook
 test_address_and_shortcut
+test_status_explains_backend
