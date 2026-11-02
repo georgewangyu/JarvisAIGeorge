@@ -1682,7 +1682,11 @@ The repaired adapter returned a live workspace/surface pair, and closing only th
 A separate disposable task retained a running terminal process after its work was declared complete.
 `cmux close-workspace --workspace "$workspace"` returned `Error: confirmation_required: Workspace has a running process; retry with --force` with exit 1.
 Normal `bin/fm-teardown.sh "$task"` then closed that exact single-surface task, verified app-wide absence, retired its metadata and backlog row, and preserved the focused manager workspace.
-Fixtures additionally cover a zero-exit semantic refusal, a successful-looking no-op, failed, empty, or malformed inventories, changed identity, extra surfaces, and refusal even under teardown's force option.
+Fixtures additionally cover a zero-exit semantic refusal, a successful-looking no-op, failed, empty, or malformed app-wide and per-window inventories, duplicate scoped labels before and after close, changed identity, extra surfaces before ordinary and forced close, and refusal even under teardown's force option.
+Creation fixtures refuse unreadable or malformed pre-create inventory in both plain and grouped paths without making a create call; liveness treats incomplete per-window inventory as unreadable.
+On 2026-11-02 with cmux 0.65.2 (113), a fresh disposable `fm-test-` workspace was created through `fm_backend_cmux_create_task`, checked with `cmux_refuse_if_unsafe`, and closed through `fm_backend_cmux_kill` on the integrated tree.
+The controlled output reported `remaining_exact_workspace=0`, `focus_preserved=true`, and `live_review_proof=passed`; the test-owned workspace was confirmed absent while the previously focused workspace was preserved.
+The integrated refresh ran `bin/fm-test-run.sh tests/fm-backend-cmux.test.sh tests/fm-teardown-endpoint-safety.test.sh tests/fm-cmux-layout.test.sh tests/fm-cmux-reboot-heal.test.sh tests/fm-control.test.sh` and reported `FM_TEST_SUMMARY total=5 failed=0 skipped_gate=0` with 136 passing behavior checks.
 The refused cases retain byte-identical endpoint metadata and the in-flight backlog row without a pending-close marker that could remove them on startup.
 
 Refresh the portable behavior checks with:

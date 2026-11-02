@@ -113,11 +113,12 @@ Cleanup owns the whole workspace and uses `close-workspace`.
 cmux also refuses to remove the only workspace in a macOS window while returning a misleading success response.
 When the task is last in its window, Firstmate creates one unfocused unnamed sibling workspace in that same window, closes the task workspace, and leaves the window with cmux's fresh default workspace.
 The sibling never carries an `fm-` title and is ignored by recovery.
+Creation starts only after a readable, schema-checked inventory proves its scoped label absent.
 Creation acknowledgements can precede workspace-list visibility, so launch polls identity and default-surface readiness without repeating creation.
 A grouped creation attempt that fails or remains unconfirmed never falls through to a second plain creation.
 
-Cleanup verifies workspace absence from a complete app-wide inventory before retiring task records.
-A running-process confirmation may be retried only for the scoped task identity and its exact sole surface, after teardown's existing work-safety gates.
+Cleanup requires a nonempty, labelled workspace inventory in every listed window, checks that the task has a unique scoped label and exactly its recorded sole surface before the first close, then verifies that neither its workspace ID nor label remains.
+A running-process confirmation may be retried only for that same unique task identity and exact sole surface, after teardown's existing work-safety gates.
 A failed or unreadable close retains metadata, including under teardown's `--force`; its backlog-close marker is published only after absence is proven.
 
 The exact window membership is re-read before this operation.

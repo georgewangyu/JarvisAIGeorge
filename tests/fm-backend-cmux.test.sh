@@ -481,7 +481,7 @@ test_create_task_creates_and_parses_ids() {
   dir="$TMP_ROOT/create-task"; mkdir -p "$dir/responses"
   title=$(cmux_expected_scoped_title fm-newtask)
   # 1: workspace list --json (pre-create duplicate check) -> no match
-  printf '{"workspaces":[]}' > "$dir/responses/1.out"
+  cmux_workspace_list_response "$dir" 1 other independent
   # 2: new-workspace (silent on success)
   # 3: workspace list --json (post-create id resolution) -> match
   cmux_workspace_list_response "$dir" 3 "bbbbbbbb-1111-1111-1111-111111111111" "$title"
@@ -1097,6 +1097,22 @@ case "$1" in
     fi
     ;;
   workspace)
+    if [ "$mode" = pre-read-error ] && [ ! -f "$d/created" ]; then exit 1; fi
+    if [ "$mode" = pre-read-malformed ] && [ ! -f "$d/created" ]; then printf '{}'; exit 0; fi
+    if [ "$mode" = empty-workspaces ] || { [ "$mode" = post-empty ] && [ -f "$d/attempted" ]; } \
+      || { [ "$mode" = force-empty ] && [ -f "$d/forced" ]; }; then
+      printf '{"workspaces":[]}'
+      exit 0
+    fi
+    if [ "$mode" = id-only ]; then printf '{"workspaces":[{"id":"other"}]}'; exit 0; fi
+    if [ "$mode" = duplicate ] && [ ! -f "$d/gone" ]; then
+      jq -n --arg id "$ws" --arg t "$(cat "$d/title")" '{workspaces:[{id:$id,title:$t},{id:"duplicate",title:$t}]}'
+      exit 0
+    fi
+    if { [ "$mode" = duplicate ] || [ "$mode" = post-duplicate ]; } && [ -f "$d/gone" ]; then
+      jq -n --arg t "$(cat "$d/title")" '{workspaces:[{id:"duplicate",title:$t}]}'
+      exit 0
+    fi
     delayed=0
     case "$mode" in
       launch-*)
@@ -1128,6 +1144,7 @@ case "$1" in
   new-workspace)
     case "$mode" in
       launch-*) touch "$d/created"; printf 'OK workspace:1'; [ "$mode" != launch-error ] || exit 1 ;;
+      pre-read-*) touch "$d/created" ;;
       *) [ "$mode" = sibling-error ] || touch "$d/sibling" ;;
     esac
     ;;
@@ -1138,9 +1155,9 @@ case "$1" in
       error) exit 1 ;;
       noop|post-error) printf OK ;;
       refuse) printf 'confirmation_required: Workspace has a running process; retry with --force' ;;
-      confirm)
+      confirm|force-empty)
         case "$*" in
-          *--force*) touch "$d/gone"; printf OK ;;
+          *--force*) touch "$d/gone" "$d/forced"; printf OK ;;
           *) printf 'confirmation_required: Workspace has a running process; retry with --force' ;;
         esac
         ;;
@@ -1171,7 +1188,6 @@ test_create_waits_without_recreating() {
           if [ "$2" = yes ]; then
             fm_cmux_layout_enabled() { return 0; }
             fm_cmux_layout_ensure() { printf "group:1\twindow:1"; }
-            fm_backend_cmux_workspaces_json() { fm_backend_cmux_cli workspace list --json; }
           fi
           fm_backend_cmux_create_task fm-close-task /tmp
         ' _ "${FM_TEST_CMUX_CREATE_ADAPTER:-$ROOT/bin/backends/cmux.sh}" "$grouped" 2>"$dir/err")
@@ -1186,6 +1202,42 @@ test_create_waits_without_recreating() {
     done
   done
   pass "fm_backend_cmux_create_task: plain and grouped delayed readiness succeeds without duplicate creates, and ambiguous failure preserves the first attempt"
+}
+
+test_create_refuses_unproven_duplicate_check() {
+  local dir grouped mode
+  for grouped in no yes; do
+    for mode in pre-read-error pre-read-malformed; do
+      dir=$(make_cmux_close_case "create-$grouped-$mode" "$mode")
+      FM_CMUX_CLOSE_DIR="$dir" FM_HOME="$dir/home" FM_ROOT="$ROOT" FM_CMUX_LAYOUT=off \
+        PATH="$dir/fakebin:$PATH" bash -c '
+          . "$1"
+          if [ "$2" = yes ]; then
+            fm_cmux_layout_enabled() { return 0; }
+            fm_cmux_layout_ensure() { printf "group:1\twindow:1"; }
+          fi
+          fm_backend_cmux_create_task fm-close-task /tmp
+        ' _ "$ROOT/bin/backends/cmux.sh" "$grouped" > "$dir/out" 2> "$dir/err" \
+        && fail "$grouped $mode accepted an unproven duplicate check"
+      assert_no_grep new-workspace "$dir/log" "$grouped $mode attempted to create a duplicate"
+    done
+  done
+  pass "cmux create: plain and grouped paths refuse unreadable or malformed pre-create inventory"
+}
+
+test_liveness_refuses_incomplete_inventory() {
+  local dir mode state
+  for mode in empty-workspaces id-only; do
+    dir=$(make_cmux_close_case "liveness-$mode" "$mode")
+    state=$(FM_CMUX_CLOSE_DIR="$dir" FM_HOME="$dir/home" FM_ROOT="$ROOT" FM_CMUX_LAYOUT=off \
+      PATH="$dir/fakebin:$PATH" bash -c '
+        . "$1"
+        fm_backend_cmux_ping_state() { printf ok; }
+        fm_backend_cmux_agent_state "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111"
+      ' _ "$ROOT/bin/backends/cmux.sh")
+    assert_equals unreadable "$state" "$mode must not license recovery"
+  done
+  pass "cmux liveness: incomplete per-window inventory cannot report a task missing"
 }
 
 test_kill_closes_workspace_directly_when_not_last() {
@@ -1213,10 +1265,13 @@ test_kill_adds_sibling_when_last_in_window() {
 
 test_kill_confirmation_and_refusal() {
   local dir mode
-  for mode in refuse noop error post-error bad-schema inventory-error empty-windows; do
+  for mode in refuse noop error post-error bad-schema inventory-error empty-windows empty-workspaces post-empty force-empty id-only duplicate post-duplicate; do
     dir=$(make_cmux_close_case "kill-$mode" "$mode")
     run_cmux_close_case "$dir" fm-close-task && fail "$mode reported a false successful close"
-    assert_absent "$dir/gone" "$mode unexpectedly removed the workspace"
+    case "$mode" in
+      post-empty|force-empty|post-duplicate) assert_present "$dir/gone" "$mode fixture did not close before its unproven read" ;;
+      *) assert_absent "$dir/gone" "$mode unexpectedly removed the workspace" ;;
+    esac
   done
   dir=$(make_cmux_close_case kill-confirm confirm)
   run_cmux_close_case "$dir" fm-close-task || fail "owned single-surface task did not close after confirmation"
@@ -1234,6 +1289,10 @@ test_kill_never_forces_unbound_or_shared_workspace() {
   touch "$dir/extra-surface"
   run_cmux_close_case "$dir" fm-close-task && fail "extra surface confirmation should refuse"
   assert_no_grep --force "$dir/log" "shared workspace close attempted force"
+  dir=$(make_cmux_close_case kill-extra-normal normal)
+  touch "$dir/extra-surface"
+  run_cmux_close_case "$dir" fm-close-task && fail "ordinary close of extra surface should refuse"
+  assert_absent "$dir/attempted" "ordinary close reached a shared workspace"
   dir=$(make_cmux_close_case kill-identity confirm)
   printf unrelated > "$dir/title"
   run_cmux_close_case "$dir" fm-close-task && fail "changed workspace identity should refuse"
@@ -1258,7 +1317,7 @@ test_kill_recovers_stale_target_by_label() {
 test_teardown_cmux_retains_unproven_endpoint() {
   local dir mode rc
   command -v tasks-axi >/dev/null 2>&1 || { echo 'skip: tasks-axi not installed'; return; }
-  for mode in refuse noop post-error empty-windows confirm; do
+  for mode in refuse noop post-error empty-windows empty-workspaces post-empty force-empty id-only duplicate post-duplicate confirm; do
     dir=$(make_cmux_close_case "teardown-$mode" "$mode")
     mkdir -p "$dir/project"
     git init -q "$dir/project"
@@ -1286,7 +1345,7 @@ test_teardown_cmux_retains_unproven_endpoint() {
       cmp -s "$dir/meta-before" "$dir/home/state/close-task.meta" || fail "refused teardown changed endpoint metadata"
       assert_equals in_flight "$(tasks-axi show close-task --file "$dir/home/data/backlog.md" | sed -n 's/^  state: *//p' | head -1)" "refused teardown changed its backlog state"
       assert_no_grep 'teardown close-task complete' "$dir/out" "false completion announcement"
-      if [ "$mode" = empty-windows ]; then
+      if [ "$mode" = empty-windows ] || [ "$mode" = empty-workspaces ] || [ "$mode" = id-only ] || [ "$mode" = duplicate ]; then
         assert_no_grep close-workspace "$dir/log" "unproven inventory must stop before close"
       else
         assert_grep close-workspace "$dir/log" "fixture never reached the failing close"
@@ -1397,6 +1456,8 @@ test_send_text_submit_send_failed_when_target_absent
 test_window_of_workspace_finds_window_and_count
 test_window_of_workspace_empty_when_not_found
 test_create_waits_without_recreating
+test_create_refuses_unproven_duplicate_check
+test_liveness_refuses_incomplete_inventory
 test_kill_closes_workspace_directly_when_not_last
 test_kill_confirmation_and_refusal
 test_kill_adds_sibling_when_last_in_window

@@ -331,15 +331,37 @@ fm_backend_cmux_scoped_title() {  # <fm-task-label>
   printf 'fm-%s-%s' "$home" "$rest"
 }
 
+# A missing or partial window/workspace list cannot prove a task absent.
+fm_backend_cmux_checked_windows_json() {
+  local wins
+  wins=$(fm_backend_cmux_cli list-windows --json --id-format uuids 2>/dev/null) || return 1
+  printf '%s' "$wins" | jq -e 'type == "array" and length > 0 and all(.[]; (.id | type == "string" and length > 0))' >/dev/null || return 1
+  printf '%s' "$wins"
+}
+
+fm_backend_cmux_checked_workspaces_json() {  # <id-format> [--window <id>]
+  local batch
+  batch=$(fm_backend_cmux_cli workspace list --json --id-format "$@" 2>/dev/null) || return 1
+  printf '%s' "$batch" | jq -e '
+    def nonempty: type == "string" and length > 0;
+    type == "object" and (.workspaces | type == "array" and length > 0 and
+      all(.[]; (.id | nonempty) and
+        (.title == null or (.title | type == "string")) and
+        (.description == null or (.description | type == "string")) and
+        ((.title | nonempty) or (.description | nonempty))))
+  ' >/dev/null || return 1
+  printf '%s' "$batch"
+}
+
 # fm_backend_cmux_workspaces_json: every workspace in every cmux window as one
 # `{"workspaces":[...]}` object. `workspace list` alone covers only the caller's
 # window, which would hide a task the Workers layout placed in the manager's
 # window from a teardown or peek run elsewhere. Only the layout widens the read.
 fm_backend_cmux_workspaces_json() {
-  # Without the Workers layout keep the original current-window read exactly.
+  # Without the Workers layout keep the current-window scope.
   if ! fm_cmux_layout_enabled; then
-    fm_backend_cmux_cli workspace list --json --id-format uuids 2>/dev/null
-    return 0
+    fm_backend_cmux_checked_workspaces_json uuids
+    return $?
   fi
   fm_backend_cmux_all_workspaces_json
 }
@@ -349,11 +371,10 @@ fm_backend_cmux_workspaces_json() {
 # unreachable app as an empty one.
 fm_backend_cmux_all_workspaces_json() {
   local wins wid acc="" one
-  wins=$(fm_backend_cmux_cli list-windows --json --id-format uuids 2>/dev/null) || return 1
+  wins=$(fm_backend_cmux_checked_windows_json) || return 1
   wins=$(printf '%s' "$wins" | jq -r '.[]? | .id' 2>/dev/null) || return 1
-  [ -n "$wins" ] || return 1
   for wid in $wins; do
-    one=$(fm_backend_cmux_cli workspace list --json --id-format both --window "$wid" 2>/dev/null) || return 1
+    one=$(fm_backend_cmux_checked_workspaces_json both --window "$wid") || return 1
     acc="$acc$one"$'\n'
   done
   printf '%s' "$acc" | jq -s '{workspaces: (map(.workspaces // []) | add // [])}' 2>/dev/null
@@ -397,9 +418,13 @@ fm_backend_cmux_wait_for_id() {  # <lookup-function> <label-or-workspace>
 # focus-restore dance is needed, unlike zellij. Echoes "<workspace_id>
 # <surface_id>" on success.
 fm_backend_cmux_create_task() {  # <label> <cwd>
-  local label=$1 cwd=$2 title dup out ids rc
+  local label=$1 cwd=$2 title dup out ids rc inventory
   title=$(fm_backend_cmux_scoped_title "$label")
-  dup=$(fm_backend_cmux_workspace_id_for_label "$title")
+  inventory=$(fm_backend_cmux_workspaces_json) || {
+    echo "error: cmux pre-create inventory is unproven for '$title'; refusing creation" >&2
+    return 1
+  }
+  dup=$(printf '%s' "$inventory" | jq -r --arg want "$title" '[.workspaces[] | select(.title == $want or .description == $want) | .id] | .[0] // empty')
   if [ -n "$dup" ]; then
     echo "error: cmux workspace '$title' already exists" >&2
     return 1
@@ -694,16 +719,25 @@ fm_backend_cmux_window_of_workspace() {  # <workspace_id> -> "<window_id> <count
 # The best-effort discovery helpers cannot distinguish absence from a failed read.
 fm_backend_cmux_close_inventory() {
   local wins wid batch inventory='[]'
-  wins=$(fm_backend_cmux_cli list-windows --json --id-format uuids) || return 1
-  printf '%s' "$wins" | jq -e 'type == "array" and length > 0 and all(.[]; (.id | type == "string" and length > 0))' >/dev/null || return 1
+  wins=$(fm_backend_cmux_checked_windows_json) || return 1
   while IFS= read -r wid; do
     [ -n "$wid" ] || continue
-    batch=$(fm_backend_cmux_cli workspace list --json --id-format uuids --window "$wid") || return 1
-    printf '%s' "$batch" | jq -e '.workspaces | type == "array" and all(.[]; (.id | type == "string" and length > 0))' >/dev/null || return 1
+    batch=$(fm_backend_cmux_checked_workspaces_json uuids --window "$wid") || return 1
     batch=$(printf '%s' "$batch" | jq --arg w "$wid" '.workspaces | length as $n | map(. + {window_id: $w, workspace_count: $n})') || return 1
     inventory=$(printf '%s' "$inventory" | jq --argjson batch "$batch" '. + $batch') || return 1
   done < <(printf '%s' "$wins" | jq -r '.[].id')
   printf '%s' "$inventory"
+}
+
+fm_backend_cmux_sole_surface() {  # <workspace-id> <recorded-surface-id>
+  local panes
+  panes=$(fm_backend_cmux_cli list-panes --workspace "$1" --json --id-format uuids 2>/dev/null) || return 1
+  printf '%s' "$panes" | jq -e --arg s "$2" '.panes | type == "array" and length == 1 and (.[0].surface_ids == [$s])' >/dev/null
+}
+
+fm_backend_cmux_close_absent() {  # <inventory> <workspace-id> <scoped-title-or-empty>
+  printf '%s' "$1" | jq -e --arg id "$2" --arg t "$3" \
+    'all(.[]; .id != $id and ($t == "" or (.title != $t and .description != $t)))' >/dev/null
 }
 
 # fm_backend_cmux_kill: remove the task's whole workspace and prove absence.
@@ -724,7 +758,7 @@ fm_backend_cmux_close_inventory() {
 # guessed); without one the close is refused. An unreachable app or an
 # unreadable inventory is never read as absence.
 fm_backend_cmux_kill() {  # <target> [unused] [expected-label]
-  local expected_label=${3:-} wsid sfid win count inventory matches entry title='' out panes
+  local expected_label=${3:-} wsid sfid win count inventory matches entry title='' out
   fm_backend_cmux_parse_target "$1" || return 1
   wsid=$FM_BACKEND_CMUX_WORKSPACE
   sfid=$FM_BACKEND_CMUX_SURFACE
@@ -732,11 +766,11 @@ fm_backend_cmux_kill() {  # <target> [unused] [expected-label]
   entry=$(printf '%s' "$inventory" | jq -c --arg id "$wsid" '.[] | select(.id == $id)')
   if [ -n "$expected_label" ]; then
     title=$(fm_backend_cmux_scoped_title "$expected_label")
+    matches=$(printf '%s' "$inventory" | jq -c --arg t "$title" '[.[] | select(.title == $t or .description == $t)]')
+    count=$(printf '%s' "$matches" | jq length)
+    [ "$count" -le 1 ] || { echo "error: cmux task identity is ambiguous; refusing close" >&2; return 1; }
     if [ -z "$entry" ]; then
-      matches=$(printf '%s' "$inventory" | jq -c --arg t "$title" '[.[] | select(.title == $t or .description == $t)]')
-      count=$(printf '%s' "$matches" | jq length)
       [ "$count" != 0 ] || return 0
-      [ "$count" = 1 ] || { echo "error: cmux task identity is ambiguous; refusing close" >&2; return 1; }
       entry=$(printf '%s' "$matches" | jq -c '.[0]')
       wsid=$(printf '%s' "$entry" | jq -r .id)
       sfid=$(fm_backend_cmux_surface_id_for_workspace "$wsid")
@@ -745,6 +779,10 @@ fm_backend_cmux_kill() {  # <target> [unused] [expected-label]
       || { echo "error: cmux workspace $wsid no longer belongs to $expected_label; refusing close" >&2; return 1; }
   fi
   [ -n "$entry" ] || return 0
+  fm_backend_cmux_sole_surface "$wsid" "$sfid" || {
+    echo "error: cmux task workspace $wsid does not have its exact sole recorded surface; refusing close" >&2
+    return 1
+  }
   win=$(printf '%s' "$entry" | jq -r .window_id)
   count=$(printf '%s' "$entry" | jq -r .workspace_count)
   if [ "$count" = 1 ]; then
@@ -755,17 +793,22 @@ fm_backend_cmux_kill() {  # <target> [unused] [expected-label]
   out=$(fm_backend_cmux_cli close-workspace --workspace "$wsid" --window "$win" 2>&1) || true
   inventory=$(fm_backend_cmux_close_inventory) || { echo "error: cmux post-close absence is unproven for $wsid" >&2; return 1; }
   entry=$(printf '%s' "$inventory" | jq -c --arg id "$wsid" '.[] | select(.id == $id)')
-  [ -n "$entry" ] || return 0
+  fm_backend_cmux_close_absent "$inventory" "$wsid" "$title" && return 0
   case "$out" in
     *confirmation_required*)
       [ -n "$title" ] || { echo "error: cmux confirmation requires an exact task label for $wsid" >&2; return 1; }
+      [ -n "$entry" ] || { echo "error: cmux workspace $wsid vanished but a matching task label remains; refusing confirmation" >&2; return 1; }
+      matches=$(printf '%s' "$inventory" | jq -c --arg t "$title" '[.[] | select(.title == $t or .description == $t)]')
+      [ "$(printf '%s' "$matches" | jq length)" = 1 ] || {
+        echo "error: cmux task identity changed before confirmation; refusing close" >&2
+        return 1
+      }
       printf '%s' "$entry" | jq -e --arg t "$title" 'if (.description // "" | startswith("fm-")) then .description == $t else .title == $t end' >/dev/null || return 1
-      panes=$(fm_backend_cmux_cli list-panes --workspace "$wsid" --json --id-format uuids) || return 1
-      printf '%s' "$panes" | jq -e --arg s "$sfid" '.panes | length == 1 and (.[0].surface_ids == [$s])' >/dev/null \
+      fm_backend_cmux_sole_surface "$wsid" "$sfid" \
         || { echo "error: cmux confirmation refused for changed or shared task surfaces in $wsid" >&2; return 1; }
       fm_backend_cmux_cli close-workspace --workspace "$wsid" --window "$win" --force >/dev/null 2>&1 || true
       inventory=$(fm_backend_cmux_close_inventory) || { echo "error: cmux forced-close absence is unproven for $wsid" >&2; return 1; }
-      printf '%s' "$inventory" | jq -e --arg id "$wsid" 'all(.[]; .id != $id)' >/dev/null && return 0
+      fm_backend_cmux_close_absent "$inventory" "$wsid" "$title" && return 0
       ;;
   esac
   echo "error: cmux workspace $wsid is still present after its close; retaining task records" >&2
