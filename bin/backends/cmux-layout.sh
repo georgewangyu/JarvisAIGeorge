@@ -7,13 +7,13 @@
 #
 # Layout, per home and per cmux window:
 #
-#   [pinned] Jarvis                         <- the manager tab, standalone
-#   [pinned] Jarvis: Workers · 2 working · 1 needs you
+#   [pinned] JarvisAIGeorge                 <- the manager tab, standalone
+#   [pinned] JarvisAIGeorge: Workers · 2 working · 1 needs you
 #              (header runs bin/fm-cmux-board.sh, read-only)
 #              ◆ fix-login                  <- one workspace per task
 #              ◆ add-tests
 #
-# A secondmate home uses "Friday <id>" as its home name, so each one gets its
+# A secondmate home uses "Friday <N> · <Charter>" as its home name, so each one gets its
 # own manager tab and Workers group in the same sidebar.
 #
 # Identity: with the layout on, a task workspace's visible title is
@@ -44,16 +44,52 @@ fm_cmux_layout_secondmate_id() {
   return 0
 }
 
-# Visible manager-tab name: config/cmux-home-name wins, else "Jarvis" for a
-# primary and "Friday <id>" for a secondmate home.
+# Visible manager-tab name. config/cmux-home-name wins. Otherwise a primary is
+# "JarvisAIGeorge" and a secondmate home is "Friday <N> · <Charter>": N is the
+# home's 1-based position in its local parent's data/secondmates.md (omitted
+# when the parent cannot be read, e.g. a remote parent), and Charter is
+# config/cmux-charter-name or the secondmate id in title case.
 fm_cmux_layout_home_name() {
-  local f="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}/cmux-home-name" n="" sm
+  local f="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}/cmux-home-name" n="" sm num charter
   [ -f "$f" ] && IFS= read -r n < "$f"
   if [ -z "$n" ]; then
     sm=$(fm_cmux_layout_secondmate_id)
-    if [ -n "$sm" ]; then n="Friday $sm"; else n="Jarvis"; fi
+    if [ -n "$sm" ]; then
+      charter=$(fm_cmux_layout_charter_name "$sm")
+      num=$(fm_cmux_layout_friday_number "$sm")
+      if [ -n "$num" ]; then n="Friday $num · $charter"; else n="Friday · $charter"; fi
+    else
+      n="JarvisAIGeorge"
+    fi
   fi
   printf '%s' "$n"
+}
+
+fm_cmux_layout_charter_name() {  # <secondmate-id>
+  local f="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}/cmux-charter-name" c=""
+  [ -f "$f" ] && IFS= read -r c < "$f"
+  if [ -z "$c" ]; then
+    c=$(printf '%s' "$1" | tr '_-' '  ' | awk '{for (i = 1; i <= NF; i++) $i = toupper(substr($i, 1, 1)) substr($i, 2); print}')
+  fi
+  printf '%s' "$c"
+}
+
+# The secondmate's 1-based position among its parent's registry rows, or empty.
+fm_cmux_layout_friday_number() {  # <secondmate-id>
+  local id=$1 binding="$FM_HOME/.fm-secondmate-parent" parent="" line n=0 key
+  [ -f "$binding" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in parent_home=*) parent=${line#parent_home=} ;; esac
+  done < "$binding"
+  [ -n "$parent" ] && [ -f "$parent/data/secondmates.md" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in '- '*' - '*) ;; *) continue ;; esac
+    n=$((n + 1))
+    key=${line#- }
+    key=${key%% *}
+    [ "$key" = "$id" ] && { printf '%s' "$n"; return 0; }
+  done < "$parent/data/secondmates.md"
+  return 0
 }
 
 fm_cmux_layout_workers_label() {

@@ -119,15 +119,16 @@ Without it the adapter behaves exactly as described above.
 `bin/backends/cmux-layout.sh` owns the layout and `bin/fm-cmux-board.sh` owns the board.
 
 ```text
-[pinned] Jarvis                                   manager tab, standalone
-[pinned] Jarvis: Workers · 1 working · 1 needs you
+[pinned] JarvisAIGeorge                           manager tab, standalone
+[pinned] JarvisAIGeorge: Workers · 1 working · 1 needs you
            (header runs the read-only board)
            ◆ fix-login                            one workspace per task
            ◆ add-tests                            orange = needs you, charcoal = done
 ```
 
 - **Manager tab.** The first layout spawn records the caller's cmux workspace in `state/.cmux-manager-ws`, renames it to the home name, pins it, colors it, and keeps it right before its Workers group.
-  The home name is `config/cmux-home-name` when present, else `Jarvis` for a primary and `Friday <id>` for a secondmate home.
+  The home name is `config/cmux-home-name` when present, else `JarvisAIGeorge` for a primary and `Friday <N> · <Charter>` for a secondmate home.
+  N is the home's position in its local parent's `data/secondmates.md` (left out when the parent cannot be read), and Charter is `config/cmux-charter-name` or the secondmate id in title case.
 - **Workers group.** One anchor-only cmux workspace group per home and window, named `<home>: Workers`, created under a home-local lock and an idempotency key.
   Task workspaces are created inside it with `--group`.
 - **Board.** The group's generated header runs `bin/fm-cmux-board.sh`.

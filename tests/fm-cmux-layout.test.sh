@@ -27,17 +27,25 @@ test_layout_is_opt_in() {
 }
 
 test_home_names_and_labels() {
-  local h="$TMP_ROOT/names" out
-  mkdir -p "$h/config"
+  local h="$TMP_ROOT/names" p="$TMP_ROOT/names-parent" out
+  mkdir -p "$h/config" "$p/data"
   out=$(layout "$h" 'fm_cmux_layout_home_name; echo; fm_cmux_layout_workers_label; echo; fm_cmux_layout_task_title fm-fix-login')
-  [ "$out" = $'Jarvis\nJarvis: Workers\n◆ fix-login' ] || fail "primary names: got '$out'"
-  echo ops > "$h/.fm-secondmate-home"
+  [ "$out" = $'JarvisAIGeorge\nJarvisAIGeorge: Workers\n◆ fix-login' ] || fail "primary names: got '$out'"
+  echo custodian-cr > "$h/.fm-secondmate-home"
   out=$(layout "$h" 'fm_cmux_layout_home_name')
-  [ "$out" = "Friday ops" ] || fail "secondmate home name: got '$out'"
+  [ "$out" = "Friday · Custodian Cr" ] || fail "secondmate without a readable parent: got '$out'"
+  printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$p" > "$h/.fm-secondmate-parent"
+  printf '%s\n' '- ops - Ops work (home: /x; scope: ops; projects: none; added 2026-11-01)' \
+    '- custodian-cr - CR work (home: /y; scope: cr; projects: none; added 2026-11-02)' > "$p/data/secondmates.md"
+  out=$(layout "$h" 'fm_cmux_layout_home_name; echo; fm_cmux_layout_workers_label')
+  [ "$out" = $'Friday 2 · Custodian Cr\nFriday 2 · Custodian Cr: Workers' ] || fail "secondmate names: got '$out'"
+  echo Custodian > "$h/config/cmux-charter-name"
+  out=$(layout "$h" 'fm_cmux_layout_home_name')
+  [ "$out" = "Friday 2 · Custodian" ] || fail "config/cmux-charter-name must win: got '$out'"
   printf 'Night shift\n' > "$h/config/cmux-home-name"
   out=$(layout "$h" 'fm_cmux_layout_workers_label')
   [ "$out" = "Night shift: Workers" ] || fail "config/cmux-home-name must win: got '$out'"
-  pass "cmux layout: Jarvis, Friday <id>, and config/cmux-home-name"
+  pass "cmux layout: JarvisAIGeorge, Friday <N> · <Charter>, and both config overrides"
 }
 
 test_buckets() {
@@ -101,14 +109,14 @@ SH
 make_group_fake() {
   local d=$1
   mkdir -p "$d/bin"
-  echo 'Jarvis: Workers' > "$d/group-name"
+  echo 'JarvisAIGeorge: Workers' > "$d/group-name"
   cat > "$d/bin/cmux" <<'SH'
 #!/usr/bin/env bash
 D="$FAKE_DIR"
 printf '%s\n' "$*" >> "$D/log"
 case "$1" in
   list-windows) echo '[{"id":"WIN"}]' ;;
-  workspace) echo '{"workspaces":[{"id":"MGR","title":"Jarvis"}]}' ;;
+  workspace) echo '{"workspaces":[{"id":"MGR","title":"JarvisAIGeorge"}]}' ;;
   workspace-group)
     case "$2" in
       list) jq -n --arg n "$(cat "$D/group-name")" '{groups:[{ref:"workspace_group:1",name:$n,anchor_workspace_ref:"workspace:2"}]}' ;;
@@ -134,7 +142,7 @@ test_board_group_summary() {
   chmod +x "$stub"
   PATH="$d/bin:$PATH" FAKE_DIR="$d" FM_HOME="$h" FM_CREW_STATE_BIN="$stub" FM_CMUX_BOARD_INTERVAL=0 \
     bash "$ROOT/bin/fm-cmux-board.sh" --passes 1 >/dev/null
-  [ "$(cat "$d/group-name")" = 'Jarvis: Workers · 1 working · 1 unknown' ] || fail "group summary: got '$(cat "$d/group-name")'"
+  [ "$(cat "$d/group-name")" = 'JarvisAIGeorge: Workers · 1 working · 1 unknown' ] || fail "group summary: got '$(cat "$d/group-name")'"
   pass "cmux board: the group title carries the same counts, unknown included"
 }
 
