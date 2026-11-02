@@ -11,8 +11,9 @@
 # needs you = Orange, done = Charcoal, working = no color.
 #
 # It never steers, types into, wakes, or closes a worker; supervision and
-# cleanup stay with the watcher and bin/fm-teardown.sh. --once prints one board
-# and exits (tests and manual checks). docs/cmux-backend.md "Workers layout".
+# cleanup stay with the watcher and bin/fm-teardown.sh. Each pass touches
+# state/.cmux-board-beat so bin/fm-cmux-reboot-heal.sh can tell a dead board.
+# --once prints one board and exits (tests and manual checks). docs/cmux-backend.md "Workers layout".
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,6 +80,7 @@ while :; do
     printf '\033[H\033[2J%s\n' "$board"
     prev=$board
   fi
+  touch "$STATE/.cmux-board-beat" 2>/dev/null
   if fm_cmux_layout_enabled; then
     w=$(fm_cmux_layout_window_of "$(cat "$STATE/.cmux-manager-ws" 2>/dev/null)")
     gid=""

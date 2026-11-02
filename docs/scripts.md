@@ -17,6 +17,7 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | `fm-fleet-snapshot.sh`   | Print structured fleet snapshot JSON and refresh only its parent-side remote-ledger cache (schema `fm-fleet-snapshot.v1`) |
 | `fm-home-summary-refresh.sh` | Atomically publish this home's structured summary ledger                         |
 | `fm-fleet-view.sh`       | Render the fleet snapshot as a human Markdown view                                   |
+| `fm-cmux-reboot-heal.sh` | Locked session-start pass that heals cmux workers after a reboot or cmux relaunch: refresh endpoint ids, clear restore text, answer own-copy trust, restore or resume bare shells, restart the board |
 | `fm-cmux-board.sh`       | Live read-only board for the cmux Workers layout: redraws on change, renames the group with counts, colors worker tabs |
 | `fm-bearings-snapshot.sh` | Project the bounded remote-ledger fleet snapshot to compact TOON; `--include-prs` adds live GitHub enrichment |
 | `fm-bearings-board.sh`   | Build and arm the stable interactive `/bearings lavish` fleet board                  |

@@ -28,7 +28,8 @@
 #
 #   1. lock          - acquire the per-home session lock FIRST, before any
 #                       mutating step runs.
-#   2. bootstrap      - home-local stale Herdr projection cleanup runs only
+#   2. bootstrap      - home-local stale Herdr projection cleanup and the cmux
+#                       reboot heal (bin/fm-cmux-reboot-heal.sh) run only
 #                       when this session actually holds the lock. Detect-only
 #                       diagnostics always run. Bootstrap's six MUTATING sweeps
 #                       (same-home backlog reconciliation,
@@ -692,6 +693,7 @@ elif [ "$REEMIT" -eq 1 ]; then
 else
   BOOT_OUT=$(
     "$SCRIPT_DIR/fm-herdr-session-cleanup.sh" 2>&1 || true
+    "$SCRIPT_DIR/fm-cmux-reboot-heal.sh" 2>&1 || true
     FM_BOOTSTRAP_NETWORK=skip FM_TASKS_AXI_COMPATIBLE="$TASKS_AXI_COMPATIBLE" \
       "$SCRIPT_DIR/fm-bootstrap.sh" 2>&1
   )

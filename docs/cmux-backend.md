@@ -144,11 +144,46 @@ Without it the adapter behaves exactly as described above.
 
 Gate evidence and what is untested (Codex, secondmates): `docs/verification/runtime-backends.md#cmux`.
 
+## Agent liveness
+
+`fm_backend_cmux_agent_state` in `bin/backends/cmux.sh` is the recovery-grade probe `bin/fm-backend.sh` asks for.
+It reads the surface's tty and foreground process groups from `cmux top --processes --json`, lists that tty with `ps`, and classifies each foreground process through `bin/fm-agent-process-lib.sh`, the same classifier tmux uses.
+A verified harness reads `alive`, a foreground of shells only reads `dead`, a workspace or surface absent from every window reads `missing`, and anything else (the app down, a restore command still running) reads `unreadable`.
+Only `dead` and `missing` license recovery, so `bin/fm-control.sh` exit and relaunch and `bin/fm-spawn.sh --relaunch` now work on cmux.
+
+## Reboot heal
+
+cmux restores every tab after a reboot or an app relaunch and types a restore command into each one.
+`bin/fm-cmux-reboot-heal.sh` runs on the locked session-start path and repairs what that leaves behind.
+
+- **When.** The epoch is the boot time plus the cmux app pid, so an app relaunch counts too.
+  The first run on a home only records it.
+  A new epoch heals once the app has been up 45 seconds; while a tab cannot be read yet or an ask is open, a detached retry repeats the pass every minute for at most an hour, then the epoch is stamped.
+- **Per task, in order:**
+  1. Finds the tab again by its scoped label in every window and rewrites stale workspace and surface ids in the task record.
+  2. Selects a tab that cannot be read yet so cmux starts its terminal, then reselects the window's previous tab.
+  3. Offers the screen to prompt hooks (below).
+  4. Erases `cmux restore ...` text typed into a live agent's composer with Backspace and re-reads it; it never presses Enter there.
+  5. Answers a folder-trust prompt only when it names the task's own recorded copy.
+  6. Brings a bare shell back with `cmux restore --surface`, then, for a Claude task, `bin/fm-spawn.sh <id> --relaunch --resume`, which reopens the same conversation with a short resume note in place of the instructions.
+     Every Claude launch pins `--session-id` and records `claude_session_id=`, so the resume is exact.
+  7. Asks a worker brought back by cmux restore whose instructions mention a recurring loop to re-arm it, once per epoch.
+- **Board.** With the Workers layout on, a board whose heartbeat (`state/.cmux-board-beat`, written only by this home's board) is stale and whose header holds only an idle shell is started again for this home.
+- **Prompt hooks.** A local `config/cmux-heal-hooks.d/<name>.sh` (or the directory in `FM_CMUX_HEAL_HOOKS`) may define `fm_heal_hook_<name>_match <screen>`, `fm_heal_hook_<name>_answer <workspace> <surface> <screen>`, and `fm_heal_hook_<name>_ask`.
+  A matched prompt is answered only when the hook's answer function succeeds; otherwise its ask is raised.
+  No hooks ship; without one, a y/n prompt is a dialog that is left alone with an ask.
+- **Asks** go to `state/cmux-heal-status.md` and one `cmux notify` per epoch; every action, ask, or leftover also prints one `BOOTSTRAP_INFO: cmux reboot heal:` line.
+  A task it cannot heal is reported once and left to the ordinary dead-endpoint recovery.
+- **Safety.** It never types into a tab running anything but a login shell, except the Backspace erase and a hook-approved answer, never kills or interrupts a live agent, and never answers "No, exit".
+- **Controls.** `--dry-run` reports and changes nothing, `--force` (or `FM_CMUX_HEAL_FORCE=1`) runs a pass outside a new epoch, and `FM_CMUX_HEAL=off` turns it off.
+
+The manager's own tab comes back through cmux's restore of its session, and its session start runs this pass.
+
 ## Active limits
 
 - cmux is experimental, macOS-only, GUI-first, and requires the app running.
 - Socket access requires a one-time manual Settings change.
-- Secondmate spawns are unsupported until a per-home lifecycle design is verified.
+- Secondmate spawns are unsupported until a per-home lifecycle design is verified, although the agent liveness probe they need now exists.
 - There is no native busy or push-event signal.
 - A target can disappear after structural readiness and before the operation.
 - The only-workspace cleanup path leaves a fresh default workspace and cannot close the window.

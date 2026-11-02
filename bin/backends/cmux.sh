@@ -120,6 +120,9 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 # shellcheck source=bin/fm-composer-lib.sh
 . "$FM_BACKEND_CMUX_ROOT/bin/fm-composer-lib.sh"
 
+# shellcheck source=bin/fm-agent-process-lib.sh
+. "$FM_BACKEND_CMUX_ROOT/bin/fm-agent-process-lib.sh"
+
 # Opt-in Jarvis Workers layout (docs/cmux-backend.md "Workers layout").
 . "$FM_BACKEND_CMUX_ROOT/bin/backends/cmux-layout.sh"
 
@@ -333,20 +336,27 @@ fm_backend_cmux_scoped_title() {  # <fm-task-label>
 # window, which would hide a task the Workers layout placed in the manager's
 # window from a teardown or peek run elsewhere. Only the layout widens the read.
 fm_backend_cmux_workspaces_json() {
-  local wins wid
   # Without the Workers layout keep the original current-window read exactly.
   if ! fm_cmux_layout_enabled; then
     fm_backend_cmux_cli workspace list --json --id-format uuids 2>/dev/null
     return 0
   fi
-  wins=$(fm_backend_cmux_cli list-windows --json --id-format uuids 2>/dev/null | jq -r '.[]? | .id' 2>/dev/null)
-  if [ -z "$wins" ]; then
-    fm_backend_cmux_cli workspace list --json --id-format uuids 2>/dev/null
-    return 0
-  fi
+  fm_backend_cmux_all_workspaces_json
+}
+
+# fm_backend_cmux_all_workspaces_json: the every-window read itself. Returns 1
+# when the window list cannot be read, so a liveness verdict never reads an
+# unreachable app as an empty one.
+fm_backend_cmux_all_workspaces_json() {
+  local wins wid acc="" one
+  wins=$(fm_backend_cmux_cli list-windows --json --id-format uuids 2>/dev/null) || return 1
+  wins=$(printf '%s' "$wins" | jq -r '.[]? | .id' 2>/dev/null) || return 1
+  [ -n "$wins" ] || return 1
   for wid in $wins; do
-    fm_backend_cmux_cli workspace list --json --id-format uuids --window "$wid" 2>/dev/null
-  done | jq -s '{workspaces: (map(.workspaces // []) | add // [])}' 2>/dev/null
+    one=$(fm_backend_cmux_cli workspace list --json --id-format both --window "$wid" 2>/dev/null) || return 1
+    acc="$acc$one"$'\n'
+  done
+  printf '%s' "$acc" | jq -s '{workspaces: (map(.workspaces // []) | add // [])}' 2>/dev/null
 }
 
 # fm_backend_cmux_workspace_id_for_label: the live workspace id whose title
@@ -683,4 +693,66 @@ fm_backend_cmux_list_live() {
   done < <(printf '%s' "$wss" | jq -r --arg prefix "$prefix" '.workspaces[]?
       | (if (.title // "" | startswith($prefix)) then .title elif (.description // "" | startswith($prefix)) then .description else empty end) as $t
       | "\(.id)\t\($t)"' 2>/dev/null)
+}
+
+# fm_backend_cmux_surface_procs: "<pid>\t<pgid>\t<comm>" for every process on
+# the surface's tty that belongs to one of its foreground process groups, from
+# cmux's own `top --processes --json` surface record (tty plus
+# foreground_pgids) and a local `ps -t`. Prints nothing when either read fails.
+fm_backend_cmux_surface_procs() {  # <workspace_id> <surface_id>
+  local ws=$1 sf=$2 rec tty fg pid pgid comm
+  rec=$(fm_backend_cmux_cli top --all --workspace "$ws" --processes --json --id-format uuids 2>/dev/null \
+    | jq -c --arg s "$sf" 'first(.. | objects | select(.kind? == "surface" and .id == $s)) | {tty, fg: (.foreground_pgids // [])}' 2>/dev/null) || return 0
+  tty=$(printf '%s' "$rec" | jq -r '.tty // empty' 2>/dev/null)
+  fg=" $(printf '%s' "$rec" | jq -r '.fg | map(tostring) | join(" ")' 2>/dev/null) "
+  [ -n "$tty" ] && [ "$fg" != "  " ] || return 0
+  LC_ALL=C ps -t "${tty#/dev/}" -o pid=,pgid=,comm= 2>/dev/null \
+    | while read -r pid pgid comm; do
+        [ -n "$comm" ] || continue
+        case "$fg" in *" $pgid "*) printf '%s\t%s\t%s\n' "$pid" "$pgid" "$comm" ;; esac
+      done
+}
+
+# fm_backend_cmux_agent_state: recovery-grade harness-agent state for one
+# recorded "<workspace>:<surface>" target, in bin/fm-backend.sh's
+# fm_backend_agent_state vocabulary. Mirrors the tmux probe: the surface's
+# foreground process group is classified through bin/fm-agent-process-lib.sh.
+#   alive       - a foreground process is a verified harness
+#   dead        - the surface exists and its foreground holds only shells
+#   missing     - the app answers and the workspace or surface is gone
+#   unreadable  - anything else (app down, socket refused, a non-shell
+#                 non-agent foreground such as a restore command still running)
+# Only `dead` and `missing` license recovery, so every ambiguity stays
+# unreadable and a live agent is never doubled.
+fm_backend_cmux_agent_state() {  # <target>
+  local ws sf procs pid pgid comm args argv0 seen=0 shells=0 other=0
+  fm_backend_cmux_parse_target "$1" || { printf 'unreadable'; return 0; }
+  ws=$FM_BACKEND_CMUX_WORKSPACE
+  sf=$FM_BACKEND_CMUX_SURFACE
+  [ "$(fm_backend_cmux_ping_state)" = ok ] || { printf 'unreadable'; return 0; }
+  local all
+  all=$(fm_backend_cmux_all_workspaces_json) || { printf 'unreadable'; return 0; }
+  if ! printf '%s' "$all" | jq -e --arg w "$ws" 'any(.workspaces[]?; .id == $w)' >/dev/null 2>&1; then
+    printf 'missing'
+    return 0
+  fi
+  fm_backend_cmux_surface_exists "$ws" "$sf" || { printf 'missing'; return 0; }
+  procs=$(fm_backend_cmux_surface_procs "$ws" "$sf")
+  while IFS=$'\t' read -r pid pgid comm; do
+    [ -n "$pid" ] || continue
+    seen=1
+    args=$(LC_ALL=C ps -p "$pid" -o args= 2>/dev/null)
+    args=${args#"${args%%[![:space:]]*}"}
+    argv0=${args%%[[:space:]]*}
+    case "$(fm_agent_process_classify "$comm" "$argv0" "$args" "$pid")" in
+      agent) printf 'alive'; return 0 ;;
+      shell) shells=1 ;;
+      *) other=1 ;;
+    esac
+  done <<< "$procs"
+  if [ "$seen" = 1 ] && [ "$shells" = 1 ] && [ "$other" = 0 ]; then
+    printf 'dead'
+  else
+    printf 'unreadable'
+  fi
 }
