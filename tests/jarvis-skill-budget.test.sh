@@ -134,7 +134,10 @@ test_repo_launch_shapes() {
   printf '%s' "$got" | grep -q '"jarvis-ai-george@jarvis-ai-george":true' || fail "an agent shape keeps core on: $got"
   JARVIS_EXTENSIONS_DIR="$ROOT/plugins/jarvis-ai-george/extensions" "$ROOT/bin/jarvis-plugins-for.sh" 'Bad Id' >/dev/null 2>&1 \
     && fail "a bad extension id must be refused"
-  pass "skill budget: the repo settings are the manager shape and a worker shape enables only its own extension"
+  # shellcheck disable=SC2016  # literal Markdown backticks
+  grep -qF '`<plugin>@jarvis-ai-george` or `<plugin>@<plugin>`' "$ROOT/plugins/jarvis-ai-george/skills/extension-catalog/SKILL.md" \
+    || fail "the catalog's installed check must accept either marketplace"
+  pass "skill budget: the repo settings are the manager shape, a worker shape enables only its own extension, and the catalog accepts either marketplace"
 }
 
 test_home_skills_short_and_reachable() {
