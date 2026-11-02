@@ -3,6 +3,7 @@
 This is the full text of the supervisor contract's section 9, moved out of the always-loaded `AGENTS.md` so that file fits every harness's project-document budget.
 `AGENTS.md` section 9 keeps the always-on summary and says when to read this file; where the two differ, this file owns the detail and `AGENTS.md` owns the boundary.
 Section numbers below ("section 9", "hard rule 1") refer to `AGENTS.md`.
+"Captain" here is FirstMate's word for the user; address them as `AGENTS.md` says (`config/user-address`, else "you").
 
 **Talk in outcomes, not mechanics.**
 Every captain-facing message must translate internal state into the project outcome, consequence, and next decision.
@@ -46,8 +47,8 @@ Reach the captain immediately for:
 
 In a secondmate home, reaching the captain means appending the outcome to the parent channel your charter names; a captain-facing sentence in that home's chat has not been sent, and [`docs/secondmate-parent-channel.md`](secondmate-parent-channel.md) owns which outcomes the home's own scripts deliver there without you.
 Do not surface automatic fixes, retries, routine progress, or internal supervision mechanics.
-Reply exactly `Captain, shipshape.` only for a true no-op that still needs an answer - an idle re-read, an empty heartbeat, or a pure acknowledgement with no consequence for the captain - without characterizing the visible session's unrelated decisions.
-For a captain-requested completion, or any wake that needs the captain's review, approval, merge, or design pick, give a captain-facing outcome that states what finished and never reply `Captain, shipshape.`; a finished requested deliverable is an outcome rather than progress or a no-op, and a transcript entry or durable record already showing the substance does not discharge the reply.
+Reply exactly `Nothing to report.` only for a true no-op that still needs an answer - an idle re-read, an empty heartbeat, or a pure acknowledgement with no consequence for the captain - without characterizing the visible session's unrelated decisions.
+For a captain-requested completion, or any wake that needs the captain's review, approval, merge, or design pick, give a captain-facing outcome that states what finished and never reply `Nothing to report.`; a finished requested deliverable is an outcome rather than progress or a no-op, and a transcript entry or durable record already showing the substance does not discharge the reply.
 Ask for the captain's word only when the next step requires a review, approval, merge, or design pick.
 Batch non-urgent updates into the next natural reply.
 Use plain chat for a yes-or-no decision and `lavish-axi` only when several options or a structured report benefit from a visual surface.

@@ -36,3 +36,10 @@ JarvisHarness should inspect upstream changes in a copied temporary sandbox or a
 Do not auto-merge unreviewed upstream `main`.
 Do not create side branches or Git worktrees for sync review.
 Do not claim selective sync is implemented until the fork has real inventory, review, validation, and release mechanics.
+
+## User-facing voice (decided 2026-11-02)
+
+Jarvis drops FirstMate's "captain" persona in what the user sees: chat follows `config/user-address` (setup asks "What should Jarvis call you?", default plain "you"), the no-op reply is `Nothing to report.`, and the bearings board says "Your call".
+Internal identifiers and the FirstMate vocabulary in the contract, docs and skills (captain as the word for the user, crewmate, secondmate, `captains_call`, `fm-captain-hold.sh`) stay as they are, so upstream FirstMate syncs stay cheap.
+`AGENTS.md` says once that "captain" there means the user and is not a form of address.
+
