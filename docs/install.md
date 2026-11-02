@@ -183,6 +183,8 @@ The plugins also install on their own:
 
 ## Troubleshooting
 
+Several unrelated warnings at startup? Sort them by owner first: [`startup-warnings.md`](startup-warnings.md).
+
 
 ### Too many skills, or a skill is missing from the list
 

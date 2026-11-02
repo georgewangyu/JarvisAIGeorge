@@ -667,6 +667,10 @@
     {
       "path": "plugins/jarvis-ai-george/agents/jarvis-ai-george.md",
       "audience": "agent-runtime"
+    },
+    {
+      "path": "docs/startup-warnings.md",
+      "audience": "operator-current"
     }
   ]
 }

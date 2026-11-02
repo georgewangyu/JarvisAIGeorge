@@ -74,6 +74,7 @@ Backend-specific setup belongs in the linked documentation below.
 
 - [`docs/jarvisharness.md`](docs/jarvisharness.md) - public fork baseline, boundary, and adaptation plan.
 - [`docs/install.md`](docs/install.md) - install in three lines, the first-run prompts, checklist and troubleshooting.
+- [`docs/startup-warnings.md`](docs/startup-warnings.md) - startup warnings sorted by owner (this project, your config, third-party plugins, optional services, fleet readiness).
 - [`docs/jarvis-plugins.md`](docs/jarvis-plugins.md) - the Jarvis core plugin, extensions, install per tool, and the build.
 - [`docs/architecture.md`](docs/architecture.md) - inherited FirstMate architecture that still describes much of the current codebase.
 - [`docs/configuration.md`](docs/configuration.md) - current configuration surfaces inherited from FirstMate.
