@@ -18,5 +18,11 @@
       "name": "George Wang",
       "url": "https://github.com/georgewangyu"
     }
+  },
+  "listing": {
+    "per_extension_chars": 1000,
+    "total_chars": 5000,
+    "listed_desc_max": 200,
+    "skill_desc_max": 250
   }
 }

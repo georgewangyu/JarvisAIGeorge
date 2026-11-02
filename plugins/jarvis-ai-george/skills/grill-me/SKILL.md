@@ -1,6 +1,6 @@
 ---
 name: grill-me
-description: Interview the user until you know what they actually want, or until every decision in a plan is settled. Two modes, picked automatically. Intent mode when the ask is fuzzy ("build me X" with no who, why, or success). Design mode when a plan or design exists and needs stress-testing. Asks in rounds with a recommended answer for every question, looks up facts itself, and ends with a confirmed intent block. Use when the user says "grill me", "interview me", "are we sure?", "stress-test this", or when you catch yourself filling in missing requirements before any plan or code exists.
+description: "Interview the user until the intent or every decision in a plan is settled, one question at a time with a recommended answer. Use when an ask is fuzzy or a plan needs grilling."
 ---
 
 # Grill Me

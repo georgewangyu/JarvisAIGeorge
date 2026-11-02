@@ -79,6 +79,37 @@ One source per piece, one build script per repo, and generated adapters that CI 
 - Check: `python3 tools/jarvis-build.py --check` fails on a stale output, a bad skill frontmatter, a skill missing from the manifest, or a skill name owned by two plugins. The `jarvis-plugin-check` workflow runs it with the scrub gate.
 - Known extensions: vendored manifests in `plugins/jarvis-ai-george/extensions/`. Refresh with `python3 tools/jarvis-build.py --fetch`.
 
+## Skill listing budget
+
+Every coding tool shows the model a list of installed skills with their descriptions, and that list has a budget.
+Claude Code 2.1.316 gives it about 1% of the context window in characters (about 8,000 at 200K tokens; `skillListingBudgetFraction` and `skillListingMaxDescChars` in settings) and cuts descriptions when the list is over.
+Codex CLI 0.166.0 strips every description and omits skills when its skills context budget is exceeded.
+The user's other plugins share the same budget, so each Jarvis plugin keeps its share small and fixed.
+This is a different limit from the project-document byte budget, which truncates `AGENTS.md` (see `tests/fm-agents-md-size.test.sh`).
+
+The pattern, enforced by `tools/jarvis-build.py --check`:
+
+1. **One router per extension.** The build generates an always-listed router skill from the manifest: `<id>-skills` for an extension, `extension-catalog` for core. It lists every skill with a one-line summary (the first sentence of its description) and its file path. Nobody maintains the list by hand.
+2. **Listed skills.** Only the router, each agent's preload skills, and the manifest's optional `listed` array stay in the skill list.
+3. **Hidden skills.** Every other skill carries `disable-model-invocation: true`, which the build writes into the skill's frontmatter. Claude Code then drops it from the list, but it stays reachable: the model loads the router and reads `../<skill>/SKILL.md`. A user can still type its slash command. Generated agents get a session-start line naming their router.
+4. **Fixed budgets.** Listed descriptions are at most 200 characters, every description at most 250, and one plugin's listed entries (name plus description) at most 1,000 characters. The combined budget for core plus every known extension (vendored in `plugins/jarvis-ai-george/extensions/`) is 5,000 characters. All four numbers live in `jarvis-build.json` under `listing`. A manifest may declare a lower `listing_budget`, never a higher one.
+5. **Proof.** `tests/jarvis-skill-budget.test.sh` builds a synthetic extension with 100 skills. It checks that two are listed, all 100 are reachable through the router, listing all of them is refused, and the combined budget fails at six plugins and passes at four.
+
+In a home, the FirstMate skills under `.agents/skills/` follow the same rule: the user-invocable ones (`afk`, `ahoy`, `bearings`, `quiet`, `stow`, `updatefirstmate`) stay listed, and the agent-only ones are hidden with `AGENTS.md` section 13 as their router.
+
+### Tools that cannot hide skills or enable plugins per launch
+
+Claude Code can scope an extension to one worker (`--settings '{"enabledPlugins":{...}}'`), so a worker sees only the plugins it needs.
+Codex cannot enable a plugin for one launch, and it does not honor `disable-model-invocation`, so every installed skill competes for its budget.
+The fallback there is router-only discovery plus explicit loading:
+
+- A Codex worker's brief names its role and execution skills explicitly on the first lines (`Load $role-coding first`, then `$incremental-implementation` and the others it needs). An explicit `$skill` mention does not depend on the listing.
+- Anything else, it finds through the plugin's router.
+- `bin/fm-skill-catalog-check.sh` reads a worker's startup screen, and `bin/fm-spawn.sh` runs it after every Codex spawn. When the warning panel is there, the spawn prints `SKILL_CATALOG_INCOMPLETE:`, and the manager makes sure the brief names the skills the task needs.
+- The user's global skills are never deleted, disabled or rewritten. To free budget, uninstall or disable unused plugins with the tool's own commands.
+
+Verify on a personal laptop (Codex is not run on the work machine): that an explicit `$skill` mention loads a skill Codex omitted from the list, and the exact wording of its overflow panel.
+
 ## Writing an extension
 
 1. A repo with `jarvis-build.json`, `jarvis-extension.json` (schema 1), `agents-src/`, `skills/`, and a copy of `tools/jarvis-build.py`.
@@ -86,6 +117,7 @@ One source per piece, one build script per repo, and generated adapters that CI 
 3. Skill split: core holds only what the manager itself uses. Everything a worker uses lives in its extension. Mention a skill from another plugin only as optional ("if installed").
 4. In this repo, classify every new Markdown or text file in `docs/documentation-audiences.json` (the inherited doc-audience check fails otherwise).
 5. Add the repo to `peers` in this repo's `jarvis-build.json` and run `--fetch` so the catalog and the marketplace list it.
+6. Keep within the skill listing budget above: list only the skills the agents preload or that must be auto-discovered, keep descriptions short, and let the generated router index the rest. A new extension with a hundred skills costs the same listed budget as one with five.
 
 ## What loads where (Claude Code, verified)
 

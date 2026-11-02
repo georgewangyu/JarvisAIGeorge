@@ -1,6 +1,7 @@
 ---
 name: principles-first-principles
-description: Evaluate a number or a design from fundamentals instead of analogy. Break the problem into its physical parts, compute the bound (cores x per-core rate, network and disk bandwidth, memory, latency, queueing) with a back-of-envelope Fermi estimate, compare the claim to the bound, and question inherited assumptions. Use for capacity and throughput targets, benchmark plans, thread and pool sizing, "is X possible", "what is the bottleneck", or when a design copies another system's numbers.
+description: "Check a number or a design from fundamentals with a back-of-envelope bound (cores, bandwidth, latency, queueing). Use for capacity targets, \"is X possible\", or bottleneck claims."
+disable-model-invocation: true
 ---
 
 # First Principles

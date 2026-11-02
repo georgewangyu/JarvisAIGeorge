@@ -1,6 +1,7 @@
 ---
 name: firstmate-orca
-description: Agent-only operator checklist for Firstmate's Orca runtime backend. Use when switching to Orca, spawning or supervising Orca-backed work, smoke-testing Orca backend behavior, debugging Orca task state, or reconciling Orca-backed task metadata.
+description: "Operator checklist for the Orca backend. Load before switching to, spawning on, smoke-testing, debugging or reconciling Orca-backed work."
+disable-model-invocation: true
 user-invocable: false
 metadata:
   internal: true

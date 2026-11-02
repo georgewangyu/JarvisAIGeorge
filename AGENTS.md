@@ -194,7 +194,7 @@ The skill owns the guarded fleet update and restart procedure; it never touches 
 
 ## 13. Agent-only reference skills
 
-Load these agent-only skills at their precise triggers.
+Load these agent-only skills at their precise triggers. They are hidden from the skill list to keep it within budget, so load one by reading `.agents/skills/<name>/SKILL.md`.
 
 - `bootstrap-diagnostics` - on any actionable bootstrap or network-checks line (`MISSING:`, `MISSING_MANUAL:`, `PRESENTATION_UNAVAILABLE:`, `BACKEND_INVALID:`, `NEEDS_GH_AUTH`, `TANGLE:`, `STARTUP_MEMORY_BUDGET:`, `CREW_DISPATCH: invalid`, `FLEET_SYNC:`, `NETWORK_CHECKS:`, `HOME_SUMMARY:`, `BACKLOG_RECONCILE:`, `SECONDMATE_SYNC:`, `SECONDMATE_LIVENESS:`, `SECONDMATE_HANDOFF:`, `NUDGE_SECONDMATES:`, or `FMX:`), or a `BOOTSTRAP_INFO:` saying an interrupted backlog cleanup may have left an endpoint or local copy.
 - `diagnostic-reasoning` - before scoping a reported bug and before acting on a diagnostic report.

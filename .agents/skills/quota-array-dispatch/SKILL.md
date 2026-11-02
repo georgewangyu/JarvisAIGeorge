@@ -1,10 +1,7 @@
 ---
 name: quota-array-dispatch
-description: >-
-  Agent-only decision procedure for resolving a matched crew-dispatch profile
-  array from quota-axi's default TOON, ranking by spendPriority after three
-  orthogonal gates.
-  Load when a dispatch rule or default resolves to more than one profile candidate.
+description: "Choose among a matched dispatch profile array from current quota-axi data, after eligibility, reasoning-class and runway gates. Load before choosing."
+disable-model-invocation: true
 user-invocable: false
 metadata:
   internal: true

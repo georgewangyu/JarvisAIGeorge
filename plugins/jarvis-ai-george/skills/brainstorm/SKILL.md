@@ -1,6 +1,6 @@
 ---
 name: brainstorm
-description: Turn a rough idea or an open "how should we do X" into a decision. Grounds itself in the code and docs first, challenges the premises, generates 4 to 6 genuinely different options across different axes, prunes to 2 or 3 with pros, cons, a cost check and a recommendation, then lets the user pick or run a bakeoff of throwaway versions. Ends with a decision note (choice, assumptions with tests, Not Doing). Use when the user says "brainstorm", "ideate", "refine this idea", "what are the options", "stress-test my plan", or when you are about to build the first approach that came to mind for a non-trivial choice.
+description: "Turn a rough idea or an open \"how should we do X\" into a decision: ground in the code, challenge premises, compare a few real options, and recommend one."
 ---
 
 # Brainstorm

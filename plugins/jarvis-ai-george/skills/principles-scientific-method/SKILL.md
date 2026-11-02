@@ -1,6 +1,7 @@
 ---
 name: principles-scientific-method
-description: Evaluate a claim the way a scientist would. Observe, state a falsifiable hypothesis, predict the result before acting, change one thing at a time, compare against a baseline or control, try to prove yourself wrong, and label confidence with evidence. Use when debugging, testing a fix, tuning, benchmarking, comparing two configurations, or before saying "it works", "that was the cause", or "this is faster".
+description: "Test a claim like a scientist: a falsifiable hypothesis, a prediction before acting, one change at a time against a baseline, and a confidence label. Use for any \"this works\" claim."
+disable-model-invocation: true
 ---
 
 # Scientific Method

@@ -1,6 +1,7 @@
 ---
 name: principles
-description: Index of the principle skills, the evaluation methods for a claim, a number, a design, or a piece of agent scaffolding. Use when someone says "this works", "we can hit that throughput", "this is the bottleneck", "the fix is in", "is this design right", "does this violate the bitter lesson", or before trusting any result. Points to principles-scientific-method, principles-first-principles, and principles-bitter-lesson.
+description: "Index of the principle skills for judging a claim, a number, a design, or agent scaffolding. Use when someone asserts something works, is fast enough, or is the cause."
+disable-model-invocation: true
 ---
 
 # Principles

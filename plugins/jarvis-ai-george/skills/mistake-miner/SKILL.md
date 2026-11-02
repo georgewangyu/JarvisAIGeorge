@@ -1,6 +1,7 @@
 ---
 name: mistake-miner
-description: The bottom-up half of the quality bar (constraints is the top-down half). Collects agent mistakes into an append-only inbox instead of fixing each one, then clusters them weekly so a human sees the repeats and picks a mechanism (architecture, type, lint, test, then agent rules) for each. Three triggers, cheapest first, a capture hook on the user's correction prompts, a daily harvest of evaluator findings, reviewer and bot comments, failed CI runs and new agent rules, and a weekly cluster that writes the review doc. Never edits code or rules itself; approved rows go to a fix step such as pstack correct. Use when the user says "mine mistakes", "mistake review", "what do agents keep getting wrong", "harvest corrections", or when the daily job or the weekly cluster runs.
+description: "Collect agent mistakes into an append-only inbox, then cluster repeats weekly so a human picks a lasting fix (a check, a rule, a test). Use when the same mistake keeps coming back."
+disable-model-invocation: true
 ---
 
 # Mistake miner

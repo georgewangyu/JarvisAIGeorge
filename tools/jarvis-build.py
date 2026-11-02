@@ -188,8 +188,28 @@ class Repo:
 
     def generated_skill_names(self):
         names = {self.role_skill_name(n, d) for n, (d, _, _) in self.agent_sources().items()}
-        if self.is_core:
-            names.add("extension-catalog")
+        names.add(self.router_name(self.manifest))
+        return names
+
+    @staticmethod
+    def router_name(manifest):
+        """The always-listed index skill of a plugin: core's catalog, else <id>-skills."""
+        if manifest.get("core"):
+            return "extension-catalog"
+        return manifest.get("router") or f"{manifest['id']}-skills"
+
+    def listing_config(self):
+        c = self.config.get("listing", {})
+        return (int(c.get("per_extension_chars", 1000)), int(c.get("total_chars", 5000)),
+                int(c.get("listed_desc_max", 200)), int(c.get("skill_desc_max", 250)))
+
+    def listed_names(self):
+        """Skills the model sees in its skill list: the router, every agent's preload skills,
+        and the manifest's optional `listed`. Every other skill is hidden and reached by path
+        through the router."""
+        names = {self.router_name(self.manifest)} | set(self.manifest.get("listed", []))
+        for data, _, _ in self.agent_sources().values():
+            names |= set(data.get("skills", []))
         return names
 
     @staticmethod
@@ -215,6 +235,10 @@ class Repo:
             self.build_agent(name, data, body, rel, manifest_agents.get(name, {}))
         if self.is_core:
             self.build_catalog()
+        else:
+            self.build_router()
+        self.manage_hidden_skills()
+        self.check_listing_budget()
         self.build_plugin_manifests()
         self.build_marketplaces()
         self.build_agents_md(agents, manifest_agents)
@@ -265,6 +289,11 @@ class Repo:
                      "session (`--agent`), load any of them not already in your context with the "
                      "Skill tool before your first action: "
                      + ", ".join(f"`{p}`" for p in preload) + ".\n")
+        router = self.router_name(self.manifest)
+        start += ("\n" if start else "## Session start\n\n") + (
+            f"A skill named in these instructions that is not in your skill list is hidden to save "
+            f"the list's budget, not missing. Load `{self.id}:{router}` with the Skill tool (it is always "
+            f"listed); it gives every skill of this plugin with its file path, and you read that file.\n")
         text = (emit_frontmatter(fields) + f"\n<!-- {note} -->\n\n" + body.rstrip() + "\n\n"
                 + (start + "\n" if start else "") + self.rules_block(data))
         folder = "standalone" if standalone else "agents"
@@ -280,6 +309,8 @@ class Repo:
         desc = (f"Act as the {name} role: {summary.rstrip('.')}. Load when your tool has no agent "
                 f"files (Codex and others), or when a brief says load {skill}.")
         fields = {"name": skill, "description": desc}
+        if skill not in self.listed_names():
+            fields["disable-model-invocation"] = True
         load = ""
         tools = data.get("tools", "")
         if isinstance(tools, list):
@@ -319,6 +350,16 @@ class Repo:
             "Pick the extension and agent whose `dispatch when` matches the work. Launch the worker "
             "with the line shown.",
             "",
+            "## Finding a skill",
+            "",
+            "Each plugin keeps only a few skills in the skill list and indexes the rest in one "
+            "always-listed router skill (this catalog for core, `<id>-skills` for an extension). "
+            + self.ROUTER_HOWTO,
+            "",
+            "Core skills:",
+            "",
+            *self.router_table(),
+            "",
             "## Installed or not",
             "",
             "Check before routing. Claude Code: `claude plugin list` shows `<plugin>@" + mk + "`, or "
@@ -355,10 +396,113 @@ class Repo:
                     launch = f"`claude --agent {a['name']}` (standalone file, see the install docs)"
                 role = self.role_skill_name(a["name"], data)
                 lines.append(f"| `{a['name']}` | {a['dispatch_when']} | {launch} | load `{role}` |")
-            lines += ["", "Skills: " + ", ".join(f"`{s}`" for s in ext.get("skills", [])), ""]
+            lines += ["", f"Router: `{ext['id']}:{self.router_name(ext)}` indexes every skill. Skills: "
+                      + ", ".join(f"`{s}`" for s in ext.get("skills", [])), ""]
             if ext.get("relies_on_core"):
                 lines += ["Relies on core: " + ", ".join(f"`{s}`" for s in ext["relies_on_core"]), ""]
         self.out(self.prel("skills", "extension-catalog", "SKILL.md"), "\n".join(lines).rstrip() + "\n")
+
+    @staticmethod
+    def first_sentence(desc, limit=220):
+        desc = " ".join(str(desc).split())
+        m = re.match(r"(.+?[.!?])(\s|$)", desc)
+        out = m.group(1) if m else desc
+        return out if len(out) <= limit else out[:limit - 3].rstrip() + "..."
+
+    def skill_rows(self):
+        """(name, one-line summary) for every hand skill and generated role skill of this plugin."""
+        rows = []
+        disk = self.disk_skills()
+        for name in self.manifest.get("skills", []):
+            rows.append((name, self.first_sentence(disk.get(name, {}).get("description", ""))))
+        for agent, (data, _, _) in sorted(self.agent_sources().items()):
+            rows.append((self.role_skill_name(agent, data), f"Act as the `{agent}` role (for tools without agent files)."))
+        return rows
+
+    def router_table(self):
+        listed = self.listed_names()
+        lines = ["| Skill | What it is for | Listed |", "|---|---|---|"]
+        for name, summary in self.skill_rows():
+            lines.append(f"| [`{name}`](../{name}/SKILL.md) | {summary} | {'yes' if name in listed else 'no'} |")
+        return lines
+
+    ROUTER_HOWTO = ("To use a skill, load it with the Skill tool when it is in your skill list, else "
+                    "read its file: `../<skill>/SKILL.md`, relative to this skill's folder (its base "
+                    "directory). Follow that file as if it had been invoked. Skills marked \"no\" are "
+                    "hidden from the skill list to keep the list inside its budget; they are not "
+                    "deprecated.")
+
+    def build_router(self):
+        name = self.router_name(self.manifest)
+        m = self.manifest
+        desc = (f"Index of every {m['name']} skill with a one-line summary and its file. Load it to "
+                f"find the right skill for plan, build, test, review or ship work, then read that skill.")
+        lines = [emit_frontmatter({"name": name, "description": desc}),
+                 f"<!-- {GENERATED_NOTE.format(src='jarvis-extension.json')} -->", "",
+                 f"# {m['name']} skills", "", self.ROUTER_HOWTO, ""]
+        lines += self.router_table()
+        self.out(self.prel("skills", name, "SKILL.md"), "\n".join(lines).rstrip() + "\n")
+
+    def manage_hidden_skills(self):
+        """Hidden hand skills carry `disable-model-invocation: true` (Claude Code drops them from
+        the listing); listed ones must not. The build writes the field into the source."""
+        listed = self.listed_names()
+        for name in self.manifest.get("skills", []):
+            f = self.plugin / "skills" / name / "SKILL.md"
+            if not f.is_file():
+                continue
+            text = f.read_text()
+            head, body = text[4:].split("\n---\n", 1)
+            has = re.search(r"(?m)^disable-model-invocation:\s*true\s*$", head) is not None
+            if name in listed and has:
+                head = re.sub(r"(?m)^disable-model-invocation:.*\n?", "", head).rstrip("\n")
+            elif name not in listed and not has:
+                head = re.sub(r"(?m)^disable-model-invocation:.*\n?", "", head).rstrip("\n")
+                head += "\ndisable-model-invocation: true"
+            else:
+                continue
+            self.out(str(f.relative_to(self.root)), "---\n" + head + "\n---\n" + body)
+
+    def listed_descriptions(self):
+        """name -> description for every listed skill, from outputs or disk."""
+        out = {}
+        disk = self.disk_skills()
+        for name in sorted(self.listed_names()):
+            rel = self.prel("skills", name, "SKILL.md")
+            if rel in self.outputs:
+                data, _ = parse_frontmatter(self.outputs[rel], rel)
+            else:
+                data = disk.get(name, {})
+            out[name] = str(data.get("description", ""))
+        return out
+
+    def check_listing_budget(self):
+        per_ext, total, listed_max, skill_max = self.listing_config()
+        known = set(self.manifest.get("skills", [])) | self.generated_skill_names()
+        for name in sorted(self.listed_names()):
+            if name not in known:
+                self.errors.append(f"listed skill '{name}' is not a skill of this plugin")
+        used = 0
+        for name, desc in self.listed_descriptions().items():
+            if len(desc) > listed_max:
+                self.errors.append(f"listed skill '{name}': description is {len(desc)} chars (listed max {listed_max})")
+            used += len(name) + len(desc) + 4
+        budget = int(self.manifest.get("listing_budget", per_ext))
+        if budget > per_ext:
+            self.errors.append(f"listing_budget {budget} is over the per-extension cap {per_ext}")
+        if used > budget:
+            self.errors.append(f"listed skills use {used} chars, over this plugin's listing budget {budget}; "
+                               "hide a skill behind the router or shorten a description")
+        for name, data in self.disk_skills().items():
+            d = str(data.get("description", ""))
+            if name in known and len(d) > skill_max:
+                self.errors.append(f"skill '{name}': description is {len(d)} chars (max {skill_max})")
+        combined = sum(min(int(m.get("listing_budget", per_ext)), per_ext)
+                       for m in [self.manifest] + self.peers())
+        if combined > total:
+            self.errors.append(f"combined listing budget of {1 + len(self.peers())} known plugins is "
+                               f"{combined} chars, over the total {total}")
+        self.listing_used = used
 
     def build_plugin_manifests(self):
         m = self.manifest

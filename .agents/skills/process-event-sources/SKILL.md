@@ -1,17 +1,7 @@
 ---
 name: process-event-sources
-description: >-
-  Agent-only procedure for registered process-to-event sources and their wakes.
-  Use before arming a long-polling source firstmate owns, before registering a
-  deterministic condition->action watch, on any
-  `procevent <adapter> <source-id> <sequence>` check wake, and on any
-  `process-event source stranded` or `process-event source failed to start`
-  check wake.
-  Owns the arming commands, the condition->action eligibility boundary, the
-  durable result read, which wakes must be routed to their adapter instead of
-  acknowledged generically, the handled acknowledgement contract, the one-owner
-  rule, the precise durability boundary, and the Lavish adapter's loss
-  limitation.
+description: "Arm and handle registered process-to-event sources and condition-to-action watches, and their wakes. Load at the triggers in AGENTS.md section 13."
+disable-model-invocation: true
 user-invocable: false
 metadata:
   internal: true

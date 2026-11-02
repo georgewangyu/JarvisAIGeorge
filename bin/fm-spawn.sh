@@ -4881,3 +4881,9 @@ SPAWN_META_LOCK_HELD=0
 SPAWN_DELIVERY=
 [ -z "$MODE" ] || SPAWN_DELIVERY=" mode=$MODE yolo=$YOLO"
 echo "spawned $ID harness=$HARNESS kind=$KIND$SPAWN_DELIVERY window=$META_WINDOW worktree=$WT"
+# Readiness diagnostic, never a gate: a Codex worker whose installed skills
+# catalog overflowed its context budget starts fine but cannot see every skill
+# (bin/fm-skill-catalog-check.sh; docs/jarvis-plugins.md "Skill listing budget").
+if [ "$HARNESS" = codex ] && [ -x "$SCRIPT_DIR/fm-skill-catalog-check.sh" ]; then
+  fm_backend_capture "$BACKEND" "$T" 120 "$W" 2>/dev/null | "$SCRIPT_DIR/fm-skill-catalog-check.sh" 2>/dev/null || true
+fi

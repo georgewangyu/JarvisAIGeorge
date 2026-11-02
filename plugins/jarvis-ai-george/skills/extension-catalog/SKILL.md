@@ -9,6 +9,23 @@ description: "Lists every known Jarvis extension: its agents, when to dispatch e
 
 Pick the extension and agent whose `dispatch when` matches the work. Launch the worker with the line shown.
 
+## Finding a skill
+
+Each plugin keeps only a few skills in the skill list and indexes the rest in one always-listed router skill (this catalog for core, `<id>-skills` for an extension). To use a skill, load it with the Skill tool when it is in your skill list, else read its file: `../<skill>/SKILL.md`, relative to this skill's folder (its base directory). Follow that file as if it had been invoked. Skills marked "no" are hidden from the skill list to keep the list inside its budget; they are not deprecated.
+
+Core skills:
+
+| Skill | What it is for | Listed |
+|---|---|---|
+| [`brainstorm`](../brainstorm/SKILL.md) | Turn a rough idea or an open "how should we do X" into a decision: ground in the code, challenge premises, compare a few real options, and recommend one. | yes |
+| [`grill-me`](../grill-me/SKILL.md) | Interview the user until the intent or every decision in a plan is settled, one question at a time with a recommended answer. | yes |
+| [`mistake-miner`](../mistake-miner/SKILL.md) | Collect agent mistakes into an append-only inbox, then cluster repeats weekly so a human picks a lasting fix (a check, a rule, a test). | no |
+| [`principles`](../principles/SKILL.md) | Index of the principle skills for judging a claim, a number, a design, or agent scaffolding. | no |
+| [`principles-bitter-lesson`](../principles-bitter-lesson/SKILL.md) | Judge whether agent scaffolding (a skill, rule, prompt, hook or eval) will compound or decay as models improve. | no |
+| [`principles-first-principles`](../principles-first-principles/SKILL.md) | Check a number or a design from fundamentals with a back-of-envelope bound (cores, bandwidth, latency, queueing). | no |
+| [`principles-scientific-method`](../principles-scientific-method/SKILL.md) | Test a claim like a scientist: a falsifiable hypothesis, a prediction before acting, one change at a time against a baseline, and a confidence label. | no |
+| [`role-jarvis`](../role-jarvis/SKILL.md) | Act as the `jarvis-ai-george` role (for tools without agent files). | no |
+
 ## Installed or not
 
 Check before routing. Claude Code: `claude plugin list` shows `<plugin>@jarvis-ai-george`, or `<plugin>@<plugin>` when the extension was installed from its own marketplace; either counts. Codex: `codex plugin list` shows the plugin as `installed, enabled` under either marketplace. In a JarvisAIGeorge home, `bin/jarvis-setup.sh status` checks the current tool. Mark each extension below installed or not installed when you tell the user what you can do.
@@ -25,7 +42,7 @@ Jarvis core: the manager agent you talk to, the extension catalog, and the brain
 |---|---|---|---|
 | `jarvis-ai-george` | you want one agent to plan with and run a crew of workers | `claude --agent jarvis-ai-george` (standalone file, see the install docs) | load `role-jarvis` |
 
-Skills: `brainstorm`, `grill-me`, `mistake-miner`, `principles`, `principles-bitter-lesson`, `principles-first-principles`, `principles-scientific-method`
+Router: `jarvis-ai-george:extension-catalog` indexes every skill. Skills: `brainstorm`, `grill-me`, `mistake-miner`, `principles`, `principles-bitter-lesson`, `principles-first-principles`, `principles-scientific-method`
 
 ## GeorgeCodingAgent (`george-coding-agent`)
 
@@ -38,4 +55,4 @@ Install: Claude Code `claude plugin install george-coding-agent@jarvis-ai-george
 | `coding` | implement, fix, refactor, test or build work in a code repo | `claude --agent george-coding-agent:coding` | load `role-coding` |
 | `reviewer` | a diff, doc or plan needs an adversarial review | `claude --agent george-coding-agent:reviewer` | load `role-reviewer` |
 
-Skills: `start-playbook`, `spec-driven-development`, `planning-and-task-breakdown`, `doubt-driven-review`, `context-engineering`, `documentation-and-adrs`, `incremental-implementation`, `source-driven-development`, `api-and-interface-design`, `frontend-ui-engineering`, `test-driven-development`, `browser-testing`, `debugging-and-error-recovery`, `code-review-and-quality`, `code-simplification`, `security-and-hardening`, `performance-optimization`, `quality-constraints`, `git-workflow-and-versioning`, `ci-cd-and-automation`, `deprecation-and-migration`, `observability-and-instrumentation`, `shipping-and-launch`
+Router: `george-coding-agent:george-coding-agent-skills` indexes every skill. Skills: `start-playbook`, `spec-driven-development`, `planning-and-task-breakdown`, `doubt-driven-review`, `context-engineering`, `documentation-and-adrs`, `incremental-implementation`, `source-driven-development`, `api-and-interface-design`, `frontend-ui-engineering`, `test-driven-development`, `browser-testing`, `debugging-and-error-recovery`, `code-review-and-quality`, `code-simplification`, `security-and-hardening`, `performance-optimization`, `quality-constraints`, `git-workflow-and-versioning`, `ci-cd-and-automation`, `deprecation-and-migration`, `observability-and-instrumentation`, `shipping-and-launch`

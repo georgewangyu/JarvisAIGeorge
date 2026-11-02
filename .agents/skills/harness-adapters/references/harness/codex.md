@@ -38,6 +38,14 @@ That scope is load-bearing because a leading `$` commonly starts ordinary text s
 An explicit `session:window` target has no metadata, so its harness is unknown and uses the non-Codex fast path.
 This is why `$no-mistakes` reaches a Codex worker instead of being consumed by the popup.
 
+## Skill catalog budget
+
+When the installed skills exceed Codex's skills context budget, Codex strips descriptions and omits skills from the model-visible list, and the worker still starts.
+`bin/fm-spawn.sh` runs `bin/fm-skill-catalog-check.sh` on the new worker's screen and prints `SKILL_CATALOG_INCOMPLETE:` when the panel is there.
+The supported path does not depend on the list: name the role and execution skills explicitly in the brief (`Load $role-coding first`, then `$<skill>`), and point the worker at the plugin's router skill for anything else.
+Never delete, disable or rewrite the user's global skills to make room.
+Verify on a personal laptop: the overflow panel's exact wording, and that an explicit `$skill` mention loads an omitted skill.
+
 ## Primary integration
 
 The primary integration was verified on 2026-07-08 with codex-cli 0.142.1.

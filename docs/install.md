@@ -51,7 +51,7 @@ On later starts Jarvis is quiet unless something needs a call (a missing piece, 
 - [ ] `bin/jarvis-setup.sh status` prints only `ok:` lines.
 - [ ] `claude plugin list` shows `jarvis-ai-george` and, if you chose it, `george-coding-agent`.
 - [ ] Ask Jarvis "What agents can you dispatch?": it lists `george-coding-agent:coding` and `george-coding-agent:reviewer`, each marked installed or not.
-- [ ] cmux only: the manager tab is renamed **Jarvis**, pinned and colored, and a **Jarvis: Workers** group with a board appears on the first dispatch.
+- [ ] cmux only: the manager tab is renamed **JarvisAIGeorge**, pinned and colored, and a **JarvisAIGeorge: Workers** group with a board appears on the first dispatch.
 - [ ] Dispatch a tiny task (for example, a `hello.sh` in a throwaway repo under `projects/`): a worker tab appears, its pill goes working then done, Jarvis reports the result, and the tab closes after the change lands.
 - [ ] Ask Jarvis to post a message or update a ticket through an MCP tool: the write guard blocks it and Jarvis offers to dispatch a worker instead.
 
@@ -121,7 +121,7 @@ Run in a throwaway cmux workspace, from a fresh clone. Report each step as pass 
 4. Answer the form: cmux yes, coding extension yes, tools as you like. Expect `codex plugin marketplace add ...` and `codex plugin add jarvis-ai-george@jarvis-ai-george` and `codex plugin add george-coding-agent@jarvis-ai-george`, each after your yes.
 5. `/quit`, `codex` again. `codex plugin list` shows both plugins `installed, enabled`. `bin/jarvis-setup.sh status` prints only `ok:` lines (tools may stay missing if declined).
 6. Ask "What agents can you dispatch?": expect `coding` and `reviewer`, both installed, with the Codex launch shape (`$role-coding` in the brief).
-7. Dispatch a tiny task in a throwaway repo under `projects/` (for example a `hello.sh`). Expect a worker tab under **Jarvis: Workers**, the board coloring it, no pill, and a result relayed by Jarvis.
+7. Dispatch a tiny task in a throwaway repo under `projects/` (for example a `hello.sh`). Expect a worker tab under **JarvisAIGeorge: Workers**, the board coloring it, no pill, and a result relayed by Jarvis.
 8. Ask for a review of that change. Expect a reviewer worker that loads `$role-reviewer` and edits nothing (`git status` clean in that repo afterwards).
 9. Ask Jarvis to post a message or update a ticket through an MCP tool, if one is configured. Expect the write guard to block it.
 10. In the coding worker or a plain `codex` in a repo: `codex exec --sandbox read-only 'Load $role-reviewer first. Review the last commit.'` returns findings and changes nothing.
@@ -139,6 +139,16 @@ The plugins also install on their own:
 [`jarvis-plugins.md`](jarvis-plugins.md) has the per-tool details.
 
 ## Troubleshooting
+
+
+### Too many skills, or a skill is missing from the list
+
+Claude Code warns when the installed skills do not fit its skill listing, and Codex shows a warning panel that it removed descriptions or omitted skills.
+Jarvis keeps its own share small: each plugin lists only a router and a few skills, and every other skill is one hop away through the router (see [`jarvis-plugins.md`](jarvis-plugins.md) "Skill listing budget").
+
+- Find a skill Jarvis does not list: load `extension-catalog` (core) or `george-coding-agent-skills` (coding), which name every skill and its file.
+- Free budget: disable or uninstall plugins you do not use with `claude plugin disable <plugin>` or Codex's plugin commands. Jarvis never removes your other skills.
+- Codex workers: briefs name their skills explicitly (`$role-coding`, `$test-driven-development`), and the spawn prints `SKILL_CATALOG_INCOMPLETE:` when the worker's screen shows the warning.
 
 ### Plugins did not install
 

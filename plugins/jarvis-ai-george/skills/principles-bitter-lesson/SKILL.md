@@ -1,6 +1,7 @@
 ---
 name: principles-bitter-lesson
-description: "Judge whether a piece of agent scaffolding (skill, rule, prompt, steering doc, lint, harness, eval, workflow) will compound or decay as models improve, using Sutton's bitter lesson. Use when deciding what to build, keep, or delete in an agent setup, or when ranking improvements to a coding agent. Also defines the inline [bl: ...] tags, the BITTER_LESSON.md sidecar, and their checker. Formerly bitter-lesson-check."
+description: "Judge whether agent scaffolding (a skill, rule, prompt, hook or eval) will compound or decay as models improve. Use when deciding what to build, keep or delete."
+disable-model-invocation: true
 ---
 
 # Bitter Lesson

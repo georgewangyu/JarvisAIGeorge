@@ -1,8 +1,7 @@
 ---
 name: captain-hold-lifecycle
-description: >-
-  Agent-only policy for completing investigations and visual reviews without losing unresolved captain calls, and for closing what the captain owns with his actual words.
-  Load before treating an investigation, scout report, structured review, or Lavish review as complete, before ending a visual review that exposed a captain decision, when recording or routing the captain's answer, and on any RECORD DIVERGENCE line the wake drain prints.
+description: "Complete investigations and reviews without losing open user decisions, and close held decisions with the user's own words. Load at the triggers in AGENTS.md section 13."
+disable-model-invocation: true
 user-invocable: false
 metadata:
   internal: true
