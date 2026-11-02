@@ -143,6 +143,17 @@ Log in with the account you want this machine to use (`codex login`).
 - **Skills not found after install.** Start a new Codex session in the folder.
 - **Wrong harness detected.** `bin/jarvis-setup.sh harness` prints the tool it sees; force it with `JARVIS_HARNESS=codex bin/jarvis-setup.sh status`.
 
+### Reading a Codex warning panel in cmux
+
+Codex shows a warning count with "F2 to view". The panel works; it just needs a real F2 key press.
+
+1. Click into that Codex tab and press **F2** on the keyboard yourself. Close the panel the way it says (usually Esc) before typing again.
+2. To let Jarvis read it without typing into the session, keep the panel open and ask Jarvis to read the screen: `cmux read-screen --workspace <that tab> --lines 80` only reads text and sends no input.
+3. Do not automate F2. `cmux send-key` has no F2 (cmux 0.64.25 and 0.65.2 answer `invalid_params: Unknown key`). Never send raw escape bytes (for example with `cmux send`) into a live Codex composer: they arrive as typed input and can interrupt or edit the prompt in progress.
+4. If you only need the warnings as text, start a separate Codex session in a scratch tab for diagnostics rather than touching a working one, and keep any automation on your own tab.
+
+Verify on a personal laptop: the panel opens on F2 and closes on Esc for your Codex version.
+
 ### Codex test script (run on the laptop, report back)
 
 Run in a throwaway cmux workspace, from a fresh clone. Report each step as pass or fail with the exact output or error.

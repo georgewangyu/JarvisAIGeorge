@@ -38,6 +38,11 @@ That scope is load-bearing because a leading `$` commonly starts ordinary text s
 An explicit `session:window` target has no metadata, so its harness is unknown and uses the non-Codex fast path.
 This is why `$no-mistakes` reaches a Codex worker instead of being consumed by the popup.
 
+## Warning panel
+
+A worker's "N warnings, F2 to view" panel opens only on a native F2 key press. `cmux send-key` has no F2 (`invalid_params: Unknown key` on cmux 0.64.25 and 0.65.2), and raw escape bytes sent into a live composer arrive as input and can interrupt the worker's prompt, so never send either to a worker.
+To read the warnings, ask the user to press F2 in that tab, then read it with `cmux read-screen --workspace <tab> --lines 80`, which sends no input. `docs/install.md` "Reading a Codex warning panel in cmux" owns the operator steps.
+
 ## Skill catalog budget
 
 When the installed skills exceed Codex's skills context budget, Codex strips descriptions and omits skills from the model-visible list, and the worker still starts.
