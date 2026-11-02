@@ -249,6 +249,7 @@ fm_cmux_layout_bucket() {  # <state>
 # not be read, is left in FM_CMUX_LAYOUT_TITLE_ERROR for the board to show,
 # and the next pass tries again. It never touches worker endpoints.
 # Input on stdin: "<workspace-id>\t<bucket>" lines. Best effort, only on change.
+# shellcheck disable=SC2034 # FM_CMUX_LAYOUT_TITLE_ERROR is read by bin/fm-cmux-board.sh
 fm_cmux_layout_sync() {  # <window> <group-ref> <summary>
   local w=$1 gid=$2 summary=$3 ws b color cache="$FM_HOME/state/.cmux-layout-ui" want cur
   cur=$(fm_cmux_layout_groups "$w" | jq -r --arg g "$gid" '.groups[]? | select(.ref == $g) | .name // empty' 2>/dev/null)
