@@ -631,6 +631,38 @@
     {
       "path": ".claude/agents/jarvis-ai-george.md",
       "audience": "agent-runtime"
+    },
+    {
+      "path": "docs/home-layout.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": "docs/session-start-digest.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": "docs/dispatch-routing.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": "docs/task-lifecycle.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": "docs/supervision-protocol.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": "docs/captain-voice.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": "docs/backlog-contract.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": "docs/crewmate-briefs.md",
+      "audience": "agent-runtime"
     }
   ]
 }

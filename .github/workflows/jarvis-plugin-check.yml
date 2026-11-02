@@ -33,6 +33,8 @@ jobs:
           set -eu
           bash tests/jarvis-setup.test.sh
           bash tests/jarvis-manager-write-guard.test.sh
+      - name: AGENTS.md fits the project-document budget
+        run: bash tests/fm-agents-md-size.test.sh
           bash tests/jarvis-codex-manifests.test.sh
       - name: Scrub (public marker list)
         run: tools/scrub-lint/scripts/scrub-lint check --lists public
