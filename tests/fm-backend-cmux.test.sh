@@ -1113,7 +1113,7 @@ case "$1" in
     esac
     title=$(cat "$d/title")
     target=1; other=1; duplicate=0
-    if [ -f "$d/gone" ] || [ "$delayed" = 1 ]; then target=0; fi
+    if [ -f "$d/gone" ] || [ "$delayed" = 1 ] || [ "$mode" = absent ]; then target=0; fi
     if [ -f "$d/last" ] && [ ! -f "$d/sibling" ]; then other=0; fi
     if [ "$target" = 0 ]; then other=1; fi
     if [ "$mode" = duplicate ] && [ ! -f "$d/gone" ]; then duplicate=1; fi
@@ -1270,6 +1270,17 @@ test_kill_closes_workspace_directly_when_not_last() {
   assert_present "$dir/gone" "close did not remove its task workspace"
   assert_no_grep new-workspace "$dir/log" "non-last task should not create a sibling"
   pass "fm_backend_cmux_kill: ordinary close proves absence and preserves independent workspace"
+}
+
+test_kill_absent_workspace_is_already_closed() {
+  # Kept from the earlier proven-absence suite: a task workspace that a readable
+  # native inventory already shows gone is a closed endpoint, and nothing is
+  # closed again.
+  local dir
+  dir=$(make_cmux_close_case kill-absent absent)
+  run_cmux_close_case "$dir" fm-close-task || fail "a provably absent workspace is an already-closed endpoint"
+  assert_no_grep close-workspace "$dir/log" "an absent workspace must not be closed"
+  pass "fm_backend_cmux_kill: a workspace the native inventory shows gone is already closed, with no close call"
 }
 
 test_kill_adds_sibling_when_last_in_window() {
@@ -1511,6 +1522,7 @@ test_create_refuses_unproven_duplicate_check
 test_liveness_refuses_incomplete_inventory
 test_kill_closes_workspace_directly_when_not_last
 test_kill_confirmation_and_refusal
+test_kill_absent_workspace_is_already_closed
 test_kill_waits_for_native_close_visibility
 test_kill_accepts_server_advertised_force
 test_kill_refuses_unknown_confirmation_capability
