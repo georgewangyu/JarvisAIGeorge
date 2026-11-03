@@ -65,7 +65,7 @@
 set -u
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-ROOT=$(dirname "$SCRIPT_DIR")
+ROOT=${FM_ROOT_OVERRIDE:-$(dirname "$SCRIPT_DIR")}
 HOME_DIR="${FM_HOME:-$ROOT}"
 CONFIG="$HOME_DIR/config"
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"

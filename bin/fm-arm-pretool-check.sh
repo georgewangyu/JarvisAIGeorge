@@ -166,9 +166,9 @@ case "$CMD" in
 esac
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P) || exit 0
-ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/.." 2>/dev/null && pwd -P) || exit 0
+ROOT=${FM_ROOT_OVERRIDE:-$(CDPATH='' cd -- "$SCRIPT_DIR/.." 2>/dev/null && pwd -P)} || exit 0
 ACTIVE_HOME=${FM_HOME:-$ROOT}
-POLICY="$ROOT/bin/fm-arm-command-policy.mjs"
+POLICY="$SCRIPT_DIR/fm-arm-command-policy.mjs"
 
 command -v node >/dev/null 2>&1 || exit 0
 [ -f "$POLICY" ] || exit 0

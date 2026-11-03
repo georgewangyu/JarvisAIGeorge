@@ -43,9 +43,10 @@ test_outer_folder_claude() {
   settings=$(printf '%s\n' "$calls" | awk '/^arg=--settings$/ {getline; sub(/^arg=/, ""); print}')
   [ -f "$settings" ] || fail "--settings must name a generated file: $calls"
   grep -q 'CLAUDE_PROJECT_DIR' "$settings" && fail "no hook may still point at the project dir"
-  grep -q 'JARVIS_HOME\\"/bin/fm-sessionstart-run.sh' "$settings" || fail "the session-start hook must run from the home"
-  grep -q 'JARVIS_HOME\\"/bin/jarvis-setup.sh detect' "$settings" || fail "the setup check must run from the home"
-  grep -q 'jarvis-manager-write-guard.sh' "$settings" || fail "the write guard must be carried (plugin agents ignore agent hooks)"
+  grep -q 'JARVIS_HOME\\"/bin/hook fm-sessionstart-run.sh' "$settings" || fail "the session-start hook must run from the home, through bin/hook"
+  grep -q 'JARVIS_HOME\\"/bin/hook jarvis-setup.sh detect' "$settings" || fail "the setup check must run from the home, through bin/hook"
+  grep -q 'JARVIS_HOME\\"/bin/hook --notice' "$settings" || fail "the update notice must be carried"
+  grep -q 'bin/hook jarvis-manager-write-guard.sh' "$settings" || fail "the write guard must be carried through bin/hook (plugin agents ignore agent hooks)"
   grep -q '"agent"' "$settings" && fail "the launch settings must not set the project agent"
   pass "jarvis-launch: an outer folder stays the cwd, the plugin manager starts, hooks run from the home"
 }

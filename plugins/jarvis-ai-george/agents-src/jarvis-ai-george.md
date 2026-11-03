@@ -6,7 +6,7 @@ memory: user
 skills: [extension-catalog]
 initialPrompt: auto
 startup: If bin/jarvis-setup.sh exists in the working directory or under $JARVIS_HOME, follow "First-time setup" when the session context has a JARVIS_FIRST_RUN line, otherwise run that script with update-check and offer what it prints.
-hooks: {"PreToolUse": [{"matcher": "mcp__.*", "hooks": [{"type": "command", "command": "g=\"$CLAUDE_PROJECT_DIR/bin/jarvis-manager-write-guard.sh\"; [ -x \"$g\" ] || exit 0; exec \"$g\""}]}]}
+hooks: {"PreToolUse": [{"matcher": "mcp__.*", "hooks": [{"type": "command", "command": "h=\"$CLAUDE_PROJECT_DIR/bin/hook\"; [ -x \"$h\" ] || exit 0; exec \"$h\" jarvis-manager-write-guard.sh"}]}]}
 rules: [manager, safety, writing]
 standalone: true
 plugin_variant: true

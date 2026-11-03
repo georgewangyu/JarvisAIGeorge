@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -lc 'payload=$(cat 2>/dev/null || true); [ -n \"$payload\" ] || exit 0; command -v jq >/dev/null 2>&1 || exit 0; root=$(pwd -P) || exit 0; [ -x \"$root/bin/fm-sessionstart-run.sh\" ] || exit 0; [ -f \"$root/AGENTS.md\" ] || exit 0; [ -f \"$root/.codex/hooks.json\" ] || exit 0; jq -e \"any(.hooks.SessionStart[]?.hooks[]?.command?; type == \\\"string\\\" and contains(\\\"fm-sessionstart-run.sh\\\"))\" \"$root/.codex/hooks.json\" >/dev/null 2>&1 || exit 0; printf \"%s\" \"$payload\" | \"$root/bin/fm-sessionstart-run.sh\"'",
+            "command": "bash -lc 'payload=$(cat 2>/dev/null || true); [ -n \"$payload\" ] || exit 0; command -v jq >/dev/null 2>&1 || exit 0; root=$(pwd -P) || exit 0; [ -x \"$root/bin/hook\" ] || exit 0; [ -x \"$root/bin/fm-sessionstart-run.sh\" ] || exit 0; [ -f \"$root/AGENTS.md\" ] || exit 0; [ -f \"$root/.codex/hooks.json\" ] || exit 0; jq -e \"any(.hooks.SessionStart[]?.hooks[]?.command?; type == \\\"string\\\" and contains(\\\"fm-sessionstart-run.sh\\\"))\" \"$root/.codex/hooks.json\" >/dev/null 2>&1 || exit 0; exec \"$root/bin/hook\" fm-sessionstart-run.sh <<<\"$payload\"'",
             "timeout": 180
           }
         ]
@@ -14,7 +14,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -lc 'cat >/dev/null 2>&1 || true; root=$(pwd -P) || exit 0; [ -x \"$root/bin/jarvis-setup.sh\" ] || exit 0; [ -f \"$root/.codex/hooks.json\" ] || exit 0; JARVIS_HARNESS=codex exec \"$root/bin/jarvis-setup.sh\" detect'",
+            "command": "bash -lc 'payload=$(cat 2>/dev/null || true); root=$(pwd -P) || exit 0; [ -x \"$root/bin/hook\" ] || exit 0; [ -f \"$root/.codex/hooks.json\" ] || exit 0; JARVIS_HARNESS=codex exec \"$root/bin/hook\" jarvis-setup.sh detect <<<\"$payload\"'",
             "timeout": 30
           }
         ]
@@ -26,12 +26,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -lc 'payload=$(cat 2>/dev/null || true); [ -n \"$payload\" ] || exit 0; command -v jq >/dev/null 2>&1 || exit 0; root=$(pwd -P) || exit 0; [ -x \"$root/bin/fm-arm-pretool-check.sh\" ] || exit 0; [ -f \"$root/AGENTS.md\" ] || exit 0; [ -f \"$root/.codex/hooks.json\" ] || exit 0; jq -e \"any(.hooks.PreToolUse[]?.hooks[]?.command?; type == \\\"string\\\" and contains(\\\"fm-arm-pretool-check.sh\\\"))\" \"$root/.codex/hooks.json\" >/dev/null 2>&1 || exit 0; printf \"%s\" \"$payload\" | \"$root/bin/fm-arm-pretool-check.sh\"'",
+            "command": "bash -lc 'payload=$(cat 2>/dev/null || true); [ -n \"$payload\" ] || exit 0; command -v jq >/dev/null 2>&1 || exit 0; root=$(pwd -P) || exit 0; [ -x \"$root/bin/hook\" ] || exit 0; [ -x \"$root/bin/fm-arm-pretool-check.sh\" ] || exit 0; [ -f \"$root/AGENTS.md\" ] || exit 0; [ -f \"$root/.codex/hooks.json\" ] || exit 0; jq -e \"any(.hooks.PreToolUse[]?.hooks[]?.command?; type == \\\"string\\\" and contains(\\\"fm-arm-pretool-check.sh\\\"))\" \"$root/.codex/hooks.json\" >/dev/null 2>&1 || exit 0; exec \"$root/bin/hook\" fm-arm-pretool-check.sh <<<\"$payload\"'",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "bash -lc 'payload=$(cat 2>/dev/null || true); [ -n \"$payload\" ] || exit 0; command -v jq >/dev/null 2>&1 || exit 0; root=$(pwd -P) || exit 0; [ -x \"$root/bin/fm-cd-pretool-check.sh\" ] || exit 0; [ -f \"$root/AGENTS.md\" ] || exit 0; [ -f \"$root/.codex/hooks.json\" ] || exit 0; jq -e \"any(.hooks.PreToolUse[]?.hooks[]?.command?; type == \\\"string\\\" and contains(\\\"fm-cd-pretool-check.sh\\\"))\" \"$root/.codex/hooks.json\" >/dev/null 2>&1 || exit 0; printf \"%s\" \"$payload\" | \"$root/bin/fm-cd-pretool-check.sh\"'",
+            "command": "bash -lc 'payload=$(cat 2>/dev/null || true); [ -n \"$payload\" ] || exit 0; command -v jq >/dev/null 2>&1 || exit 0; root=$(pwd -P) || exit 0; [ -x \"$root/bin/hook\" ] || exit 0; [ -x \"$root/bin/fm-cd-pretool-check.sh\" ] || exit 0; [ -f \"$root/AGENTS.md\" ] || exit 0; [ -f \"$root/.codex/hooks.json\" ] || exit 0; jq -e \"any(.hooks.PreToolUse[]?.hooks[]?.command?; type == \\\"string\\\" and contains(\\\"fm-cd-pretool-check.sh\\\"))\" \"$root/.codex/hooks.json\" >/dev/null 2>&1 || exit 0; exec \"$root/bin/hook\" fm-cd-pretool-check.sh <<<\"$payload\"'",
             "timeout": 10
           }
         ]
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -lc 'root=$(pwd -P) || exit 0; g=\"$root/bin/jarvis-manager-write-guard.sh\"; [ -x \"$g\" ] || exit 0; exec \"$g\"'",
+            "command": "bash -lc 'root=$(pwd -P) || exit 0; payload=$(cat 2>/dev/null || true); h=\"$root/bin/hook\"; [ -x \"$h\" ] || exit 0; exec \"$h\" jarvis-manager-write-guard.sh <<<\"$payload\"'",
             "timeout": 10
           }
         ]
@@ -52,8 +52,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -lc 'payload=$(cat 2>/dev/null || true); [ -n \"$payload\" ] || exit 0; command -v jq >/dev/null 2>&1 || exit 0; root=$(pwd -P) || exit 0; [ -x \"$root/bin/fm-turnend-guard.sh\" ] || exit 0; [ -f \"$root/AGENTS.md\" ] || exit 0; [ -f \"$root/.codex/hooks.json\" ] || exit 0; jq -e \"any(.hooks.Stop[]?.hooks[]?.command?; type == \\\"string\\\" and contains(\\\"fm-turnend-guard.sh\\\"))\" \"$root/.codex/hooks.json\" >/dev/null 2>&1 || exit 0; printf \"%s\" \"$payload\" | \"$root/bin/fm-turnend-guard.sh\"'",
+            "command": "bash -lc 'payload=$(cat 2>/dev/null || true); [ -n \"$payload\" ] || exit 0; command -v jq >/dev/null 2>&1 || exit 0; root=$(pwd -P) || exit 0; [ -x \"$root/bin/hook\" ] || exit 0; [ -x \"$root/bin/fm-turnend-guard.sh\" ] || exit 0; [ -f \"$root/AGENTS.md\" ] || exit 0; [ -f \"$root/.codex/hooks.json\" ] || exit 0; jq -e \"any(.hooks.Stop[]?.hooks[]?.command?; type == \\\"string\\\" and contains(\\\"fm-turnend-guard.sh\\\"))\" \"$root/.codex/hooks.json\" >/dev/null 2>&1 || exit 0; exec \"$root/bin/hook\" fm-turnend-guard.sh <<<\"$payload\"'",
             "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -lc 'payload=$(cat 2>/dev/null || true); [ -n \"$payload\" ] || exit 0; root=$(pwd -P) || exit 0; h=\"$root/bin/hook\"; [ -x \"$h\" ] || exit 0; [ -f \"$root/.codex/hooks.json\" ] || exit 0; exec \"$h\" --notice <<<\"$payload\"'",
+            "timeout": 5
           }
         ]
       }

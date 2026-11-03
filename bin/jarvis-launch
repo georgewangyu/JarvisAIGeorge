@@ -15,7 +15,9 @@
 #     (project agent, hooks, plugins) applies exactly as before;
 #   - anywhere else: `claude --agent jarvis-ai-george:jarvis-ai-george
 #     --settings <file>`, where <file> is the home's .claude/settings.json with
-#     every "$CLAUDE_PROJECT_DIR" hook path rewritten to "$JARVIS_HOME", the
+#     every "$CLAUDE_PROJECT_DIR" hook path rewritten to "$JARVIS_HOME" (each
+#     entry calls the stable bin/hook dispatcher, which runs this session's
+#     pinned copy of the script; see bin/hook), the
 #     manager plugin shape (core on, known extensions off), the
 #     manager write guard added for MCP tools (plugin agents ignore agent
 #     hooks), and only the home's setup script pre-approved. The file is
@@ -73,7 +75,7 @@ data["enabledPlugins"] = shape
 text = json.dumps(src.get("hooks", {}))
 text = text.replace('\\"$CLAUDE_PROJECT_DIR\\"', '\\"$JARVIS_HOME\\"').replace("$CLAUDE_PROJECT_DIR", "$JARVIS_HOME")
 hooks = json.loads(text)
-guard = '"$JARVIS_HOME"/bin/jarvis-manager-write-guard.sh'
+guard = 'exec "$JARVIS_HOME"/bin/hook jarvis-manager-write-guard.sh'
 hooks.setdefault("PreToolUse", []).append({"matcher": "mcp__.*", "hooks": [{"type": "command", "command": guard}]})
 data["hooks"] = hooks
 data["permissions"] = {"allow": [f"Bash({home}/bin/jarvis-setup.sh:*)", "Bash($JARVIS_HOME/bin/jarvis-setup.sh:*)"]}

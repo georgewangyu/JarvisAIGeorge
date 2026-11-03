@@ -96,6 +96,12 @@ At session start Jarvis runs `bin/jarvis-setup.sh update-check` (bounded, quiet 
 
 Nothing updates without your yes. Turn the check off with `echo off > config/update-check`.
 
+An update never breaks a session that is already running:
+
+- **Home hooks.** Every hook entry in `.claude/settings.json`, `.codex/hooks.json` and the `jarvis-launch` settings calls `bin/hook <script>`. At session start it pins the session to a snapshot of the home's hook code at the current commit (`state/hook-releases/<commit>/`), and every later hook of that session runs that snapshot with the live home's state and config. After a `git pull`, running sessions keep their code; a new session pins the new commit. Snapshots older than 3 days go once no live session uses them (`JARVIS_HOOK_KEEP_DAYS`).
+- **Plugins.** Every plugin change ships under a new version, and Claude Code keeps the old version folder for sessions still using it (`docs/jarvis-plugins.md`).
+- **Notice.** An old session shows "Jarvis was updated. Restart to load it." once, at its next prompt. Restart (or `--resume`) to load the update; a `/compact` keeps the old code. Turn it off with `JARVIS_UPDATE_NOTICE=off`.
+
 ## Manager write guard
 
 In the home, the manager runs a PreToolUse hook (`bin/jarvis-manager-write-guard.sh`) that blocks MCP tools whose name or action looks like a write (create, update, delete, send, post, comment, deploy, publish, merge, resolve, write, edit, remove) and tells Jarvis to dispatch a worker.

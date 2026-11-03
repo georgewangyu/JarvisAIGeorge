@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+# bin/hook - the stable home hook dispatcher: run this session's pinned copy of
+# a home hook script, so a `git pull` of the home never changes the code a
+# running session's hooks execute.
+#
+# Usage (from .claude/settings.json, .codex/hooks.json, the jarvis-launch
+# settings and the manager agent's own hooks):
+#   bin/hook <script> [args...]     e.g. bin/hook fm-turnend-guard.sh --claude
+#   bin/hook --notice               UserPromptSubmit: the once-per-session notice
+#   bin/hook --require-payload <script> [args...]
+#                                   exit 0 at once when stdin is empty (Codex)
+#
+# How it works:
+#   - SessionStart (any source but compact) pins the session: it snapshots the
+#     home's hook code at the current commit into
+#     state/hook-releases/<key>/ (bin/, AGENTS.md and CLAUDE.md copied, every
+#     other top-level entry a symlink to the live home) and records <key> for
+#     the session id in state/hook-releases/sessions/<id>. <key> is the commit,
+#     plus a content hash when bin/ or those files have local edits.
+#   - Every other event runs <script> from the pinned snapshot with FM_HOME and
+#     FM_ROOT_OVERRIDE set to the live home: scripts find their code (and what
+#     they source) by their own folder, so code is pinned, while state, config,
+#     the git checkout and the home's identity stay live. A new session after `git pull` pins the new commit; old and new
+#     sessions run side by side.
+#   - No session id, no pin, a missing snapshot, or a home that is not a git
+#     clone: run the live script (the behavior before pinning existed).
+#   - Pruning, at most hourly at a session start: a snapshot older than
+#     JARVIS_HOOK_KEEP_DAYS (default 3) goes only when no live session uses it.
+#     A session is live while its harness pid runs or it saw a prompt within
+#     the keep window.
+#   - --notice: once per old session (its pin is not the home's current commit)
+#     prints {"systemMessage":"Jarvis was updated. Restart to load it."}. The
+#     record is shared with the plugin's update notice, so one notice per session.
+#
+# This file is the one hook file that is never pinned, so its interface and
+# meaning must never change: add options, never repurpose them. Fast and quiet:
+# bash builtins on the hot path, no output of its own except the notice, and it
+# never fails a hook it could not dispatch. docs/install.md "Updates" owns the
+# operator view.
+set -u
+
+self_dir=$(CDPATH='' cd -- "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd -P) || exit 0
+root=${self_dir%/bin}
+home=${FM_HOME:-$root}
+rel_dir="$home/state/hook-releases"
+notice_dir=${JARVIS_NOTICE_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/jarvis-ai-george/update-notice}
+keep_days=${JARVIS_HOOK_KEEP_DAYS:-3}
+case "$keep_days" in ''|*[!0-9]*) keep_days=3 ;; esac
+
+require_payload=0
+mode=run
+case "${1:-}" in
+  --notice) mode=notice; shift ;;
+  --require-payload) require_payload=1; shift ;;
+esac
+name=
+if [ "$mode" = run ]; then
+  name=${1:-}
+  shift 2>/dev/null || true
+  case "$name" in ''|*/*|.*) exit 0 ;; esac
+fi
+
+payload=
+if [ ! -t 0 ]; then IFS= read -r -d '' payload || true; fi
+[ "$require_payload" = 1 ] && [ -z "$payload" ] && exit 0
+
+head=${payload:0:4096}
+sid=
+re_sid='"session_id"[[:space:]]*:[[:space:]]*"([A-Za-z0-9._-]{1,128})"'
+[[ $head =~ $re_sid ]] && sid=${BASH_REMATCH[1]}
+case "$sid" in .*) sid= ;; esac
+event=
+re_ev='"hook_event_name"[[:space:]]*:[[:space:]]*"([A-Za-z_]+)"'
+[[ $head =~ $re_ev ]] && event=${BASH_REMATCH[1]}
+
+run_live() {
+  local s="$root/bin/$name"
+  [ -f "$s" ] || exit 0
+  if [ -n "$payload" ]; then exec "$s" "$@" <<<"$payload"; fi
+  exec "$s" "$@" </dev/null
+}
+
+# The commit the home is on, from .git files (no git process on the hot path).
+current_sha() {
+  local g="$root/.git" ref line sha=
+  if [ -f "$g" ]; then
+    git -C "$root" rev-parse HEAD 2>/dev/null
+    return
+  fi
+  [ -r "$g/HEAD" ] || return 1
+  IFS= read -r ref <"$g/HEAD" || return 1
+  case "$ref" in
+    'ref: '*)
+      ref=${ref#ref: }
+      if [ -r "$g/$ref" ]; then IFS= read -r sha <"$g/$ref"; fi
+      if [ -z "$sha" ] && [ -r "$g/packed-refs" ]; then
+        while IFS= read -r line; do
+          case "$line" in *" $ref") sha=${line%% *}; break ;; esac
+        done <"$g/packed-refs"
+      fi ;;
+    *) sha=$ref ;;
+  esac
+  [ -n "$sha" ] && printf '%s\n' "$sha"
+}
+
+release_key() {
+  local sha dirty h
+  sha=$(git -C "$root" rev-parse HEAD 2>/dev/null) || return 1
+  dirty=$(git -C "$root" status --porcelain -- bin AGENTS.md CLAUDE.md 2>/dev/null) || return 1
+  if [ -z "$dirty" ]; then printf '%s\n' "$sha"; return; fi
+  h=$( { git -C "$root" diff HEAD --binary -- bin AGENTS.md CLAUDE.md
+         git -C "$root" ls-files -o --exclude-standard -z -- bin | while IFS= read -r -d '' f; do
+           printf '%s\n' "$f"; cat "$root/$f"; done; } 2>/dev/null | git hash-object --stdin) || return 1
+  printf '%s-dirty-%s\n' "$sha" "${h:0:12}"
+}
+
+make_snapshot() {  # <key>: build state/hook-releases/<key> atomically
+  local key=$1 dest="$rel_dir/$1" tmp e base
+  [ -d "$dest/bin" ] && return 0
+  mkdir -p "$rel_dir" || return 1
+  tmp=$(mktemp -d "$rel_dir/.build.XXXXXX") || return 1
+  if ! cp -Rp "$root/bin" "$tmp/bin"; then rm -rf "$tmp"; return 1; fi
+  for e in AGENTS.md CLAUDE.md; do
+    [ -e "$root/$e" ] && cp -p "$root/$e" "$tmp/$e"
+  done
+  for e in "$root"/* "$root"/.[!.]* "$root"/..?*; do
+    [ -e "$e" ] || [ -L "$e" ] || continue
+    base=${e##*/}
+    case "$base" in bin|AGENTS.md|CLAUDE.md|.git|state) continue ;; esac
+    ln -s "$e" "$tmp/$base" 2>/dev/null || true
+  done
+  printf '%s\n' "$key" >"$tmp/.release"
+  mv "$tmp" "$dest" 2>/dev/null || rm -rf "$tmp"
+  [ -d "$dest/bin" ]
+}
+
+prune() {
+  local stamp="$rel_dir/.pruned" live=" " f k pid rest d now
+  [ -n "$(find "$stamp" -mmin -60 2>/dev/null)" ] && return 0
+  : >"$stamp" 2>/dev/null || return 0
+  for f in "$rel_dir"/sessions/*; do
+    [ -f "$f" ] || continue
+    k='' pid=''
+    read -r k pid rest <"$f" 2>/dev/null || true
+    if { [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; } \
+      || [ -n "$(find "$f" -mtime "-$keep_days" 2>/dev/null)" ]; then
+      live="$live$k "
+    else
+      rm -f "$f"
+    fi
+  done
+  now=$(release_key 2>/dev/null || true)
+  for d in "$rel_dir"/*/; do
+    d=${d%/}
+    k=${d##*/}
+    [ -f "$d/.release" ] || continue
+    case "$live" in *" $k "*) continue ;; esac
+    [ "$k" = "$now" ] && continue
+    [ -n "$(find "$d/.release" -mtime "+$keep_days" 2>/dev/null)" ] || continue
+    rm -rf "$d"
+  done
+  find "$rel_dir" -maxdepth 1 -name '.build.*' -mmin +60 -exec rm -rf {} + 2>/dev/null
+  find "$notice_dir" -type f -mtime +14 -delete 2>/dev/null
+  return 0
+}
+
+pin_session() {
+  local key source=
+  re_src='"source"[[:space:]]*:[[:space:]]*"([a-z]+)"'
+  [[ $head =~ $re_src ]] && source=${BASH_REMATCH[1]}
+  [ "$source" = compact ] && [ -f "$rel_dir/sessions/$sid" ] && return 0
+  key=$(release_key) || return 1
+  make_snapshot "$key" || return 1
+  mkdir -p "$rel_dir/sessions" || return 1
+  printf '%s %s\n' "$key" "$PPID" >"$rel_dir/sessions/.$sid.$$" \
+    && mv -f "$rel_dir/sessions/.$sid.$$" "$rel_dir/sessions/$sid"
+  rm -f "$notice_dir/$sid" 2>/dev/null
+  prune
+}
+
+pinned_key() {
+  local k='' rest
+  [ -n "$sid" ] && [ -f "$rel_dir/sessions/$sid" ] || return 1
+  read -r k rest <"$rel_dir/sessions/$sid" 2>/dev/null || true
+  [ -n "$k" ] && printf '%s' "$k"
+}
+
+if [ "$mode" = notice ]; then
+  [ "${JARVIS_UPDATE_NOTICE:-on}" = off ] && exit 0
+  key=$(pinned_key) || exit 0
+  # Keep the record fresh: a session that saw a prompt recently is live.
+  { read -r line <"$rel_dir/sessions/$sid" && printf '%s\n' "$line" >"$rel_dir/sessions/$sid"; } 2>/dev/null
+  cur=$(current_sha 2>/dev/null) || exit 0
+  [ -n "$cur" ] || exit 0
+  case "$key" in "$cur"|"$cur"-dirty-*) exit 0 ;; esac
+  [ -e "$notice_dir/$sid" ] && exit 0
+  mkdir -p "$notice_dir" 2>/dev/null && : >"$notice_dir/$sid" 2>/dev/null || exit 0
+  printf '%s\n' '{"systemMessage":"Jarvis was updated. Restart to load it."}'
+  exit 0
+fi
+
+[ -n "$sid" ] || run_live "$@"
+if [ "$event" = SessionStart ]; then
+  pin_session 2>/dev/null || true
+fi
+key=$(pinned_key) || run_live "$@"
+script="$rel_dir/$key/bin/$name"
+[ -f "$script" ] || run_live "$@"
+export FM_HOME="$home"
+export FM_ROOT_OVERRIDE="${FM_ROOT_OVERRIDE:-$root}"
+export JARVIS_HOOK_RELEASE="$key"
+if [ -n "$payload" ]; then exec "$script" "$@" <<<"$payload"; fi
+exec "$script" "$@" </dev/null

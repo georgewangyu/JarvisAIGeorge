@@ -201,8 +201,9 @@ install_guard_scripts() {
 
 mark_codex_hook_root() {
   local dir=$1
-  mkdir -p "$dir/.codex"
+  mkdir -p "$dir/.codex" "$dir/bin"
   printf '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"fm-turnend-guard.sh"}]}]}}\n' > "$dir/.codex/hooks.json"
+  cp "$ROOT/bin/hook" "$dir/bin/hook"
 }
 
 # A primary-shaped checkout: plain (non-worktree) git repo, AGENTS.md, bin/,
@@ -889,6 +890,7 @@ test_tracked_claude_entries_inert_under_grok() {
   command -v jq >/dev/null 2>&1 || fail "test host must provide jq"
   dir="$TMP_ROOT/claude-entries-grok-inert"
   mkdir -p "$dir/bin"
+  cp "$ROOT/bin/hook" "$dir/bin/hook"
   for script in fm-turnend-guard.sh fm-claude-stop-autoarm.sh fm-sessionstart-run.sh \
     fm-arm-pretool-check.sh fm-cd-pretool-check.sh fm-subagent-pretool-check.sh jarvis-setup.sh; do
     printf '#!/usr/bin/env bash\nprintf ran >> %q\n' "$dir/invoked" > "$dir/bin/$script"
@@ -904,7 +906,12 @@ test_tracked_claude_entries_inert_under_grok() {
 
   while IFS= read -r cmd; do
     [ -n "$cmd" ] || continue
-    target=$(printf '%s\n' "$cmd" | sed -n 's|.*/bin/\([a-z0-9-]*\.sh\).*|\1|p')
+    target=$(printf '%s\n' "$cmd" | sed -n -e 's|.*/bin/hook \([a-z0-9-]*\.sh\).*|\1|p' -e 's|.*/bin/hook --notice.*|--notice|p')
+    if [ "$target" = --notice ]; then
+      ! ran_under -u GROK_AGENT GROK_HOOK_EVENT=user_prompt_submit GROK_SESSION_ID=grok-test-session \
+        || fail "the update notice entry ran under a grok hook environment"
+      continue
+    fi
     [ -n "$target" ] || fail "could not identify the target script of tracked entry: $cmd"
 
     # Native Claude: EVERY tracked entry must still reach its script, or a guard

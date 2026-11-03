@@ -51,6 +51,8 @@ data/                personal fleet records; LOCAL, gitignored as a whole
   <id>/report.md     scout task deliverable, written by the crewmate; survives teardown
 projects/            cloned repos; gitignored; read-only except under hard rule 1's concrete captain-approved project operation exception
 state/               runtime records and signals; gitignored
+  hook-releases/<key>/  per-commit snapshot of the home's hook code (bin/, AGENTS.md, CLAUDE.md copied; other top-level entries symlinked to the live home); bin/hook creates, runs and prunes them
+  hook-releases/sessions/<session-id>  the snapshot key and harness pid a session was pinned to at its start; bin/hook owns the format
   <id>.status        appended by crewmates: "<state>: <note>" wake-event lines, not current-state truth
   <id>.turn-ended    touched by turn-end hooks
   <id>.progress      touched for observed native-harness activity inside one Pi turn; bin/fm-busy-event.sh owns its generation binding and bin/fm-watch.sh reads it beside turn-ended for the busy-age bound only, never as a completed turn
