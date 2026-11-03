@@ -142,8 +142,8 @@ Without it the adapter behaves exactly as described above.
            ◆ add-tests                            orange = needs you, charcoal = done
 ```
 
-- **Manager tab.** The first layout spawn records the caller's cmux workspace in `state/.cmux-manager-ws`, renames it to the home name, pins it, colors it, and keeps it right before its Workers group.
-  The home name is `config/cmux-home-name` when present, else `JarvisAIGeorge` for a primary and `Friday <N> · <Charter>` for a secondmate home.
+- **Manager tab.** Each manager session start (`bin/jarvis-setup.sh detect`, Claude Code or Codex, in the background and bounded) and the first layout spawn record the caller's cmux workspace in `state/.cmux-manager-ws`, rename it to the home name, pin it and color it; a spawn also keeps it right before its Workers group.
+  The home name is `config/cmux-home-name` when present, else the manager name (`config/manager-name`, set with `bin/jarvis-setup.sh name <name>`, default `JarvisAIGeorge`) for a primary and `Friday <N> · <Charter>` for a secondmate home.
   N is the home's position in its local parent's `data/secondmates.md` (left out when the parent cannot be read), and Charter is `config/cmux-charter-name` or the secondmate id in title case.
 - **Workers group.** One anchor-only cmux workspace group per home and window, named `<home>: Workers`, created under a home-local lock and an idempotency key.
   Task workspaces are created inside it with `--group`.

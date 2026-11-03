@@ -184,7 +184,41 @@ test_status_explains_backend() {
   pass "jarvis-setup: status shows the saved backend, the detected terminal and where new workers spawn, separately"
 }
 
+# The manager's name: default JarvisAIGeorge (detect says nothing), a set name is
+# printed for the session and used for the cmux manager tab, and detect names the
+# tab at session start under a Codex manager too (stub cmux, no worker spawned).
+test_manager_name_and_tab() {
+  local h="$TMP_ROOT/name" c="$TMP_ROOT/name-claude" bin="$TMP_ROOT/name-bin" out
+  mkdir -p "$h" "$c" "$bin"
+  out=$(run "$h" "$c" detect | grep '^JARVIS_MANAGER_NAME' || true)
+  [ -z "$out" ] || fail "the default name must not print a line: $out"
+  run "$h" "$c" name Ada >/dev/null || fail "name must succeed"
+  out=$(run "$h" "$c" detect | grep '^JARVIS_MANAGER_NAME' || true)
+  assert_equals "JARVIS_MANAGER_NAME: Ada" "$out" "a set name is printed at session start"
+  run "$h" "$c" name a/b >/dev/null 2>&1 && fail "a name with a slash must be refused"
+  echo workers > "$h/config/cmux-layout"
+  cat > "$bin/cmux" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$bin/cmux.calls"
+case "\$*" in
+  'rpc system.tree'*) printf '%s' '{"windows":[{"id":"w1","workspace_count":1,"selected_workspace_id":"ws-mgr","workspaces":[{"id":"ws-mgr","ref":"workspace:1","title":"x","panes":[{"id":"p1","surface_count":1,"surface_ids":["s1"],"surfaces":[{"id":"s1"}]}]}]}]}' ;;
+esac
+exit 0
+STUB
+  chmod +x "$bin/cmux"
+  PATH="$bin:$PATH" CMUX_WORKSPACE_ID=ws-mgr JARVIS_HARNESS=codex FM_HOME="$h" CODEX_HOME="$c" "$SETUP" detect >/dev/null
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    grep -q 'rename --title Ada' "$bin/cmux.calls" 2>/dev/null && break
+    sleep 0.25
+  done
+  assert_grep "workspace-action --workspace ws-mgr --window w1 --action rename --title Ada" "$bin/cmux.calls" "detect names the Codex manager's tab"
+  run "$h" "$c" name default >/dev/null
+  [ ! -e "$h/config/manager-name" ] || fail "name default must remove the override"
+  pass "jarvis-setup: manager name defaults to JarvisAIGeorge, prints when set, and names the cmux tab at session start (Codex)"
+}
+
 test_backend_choice
+test_manager_name_and_tab
 test_detect_names_gaps
 test_update_check_off
 test_codex_install_commands

@@ -44,6 +44,16 @@
 #                                       how Jarvis addresses the user, in the
 #                                       gitignored config/user-address (none: no
 #                                       special address, just "you")
+#   bin/jarvis-setup.sh name <name>|default
+#                                       the manager's name, in the gitignored
+#                                       config/manager-name (default
+#                                       JarvisAIGeorge). detect prints
+#                                       JARVIS_MANAGER_NAME: <name> when it is set;
+#                                       the cmux manager tab uses it too
+#   bin/jarvis-setup.sh manager-tab     cmux only: name, pin and color this
+#                                       session's manager tab now (detect starts
+#                                       it in the background, so a Codex manager
+#                                       gets its tab before any worker exists)
 #   bin/jarvis-setup.sh plugin-autoupdate on|off
 #                                       let Claude Code update the marketplace and
 #                                       its plugins at startup (written to the
@@ -77,6 +87,7 @@ PLUGINS="jarvis-ai-george"
 # Known extensions offered at first run; the user picks, nothing installs on its own.
 EXTENSIONS="george-coding-agent"
 DOC="docs/install.md"
+DEFAULT_MANAGER_NAME=JarvisAIGeorge
 
 die() { echo "jarvis-setup: $*" >&2; exit 2; }
 
@@ -175,8 +186,19 @@ cmux_state() {  # ok|denied|unauth|down|error|absent
   esac
 }
 
+manager_name() {
+  local n=""
+  [ -f "$CONFIG/manager-name" ] && IFS= read -r n < "$CONFIG/manager-name"
+  printf '%s' "${n:-$DEFAULT_MANAGER_NAME}"
+}
+
 cmd_detect() {
-  local gaps=() b p t c
+  local gaps=() b p t c n
+  n=$(manager_name)
+  [ "$n" != "$DEFAULT_MANAGER_NAME" ] && echo "JARVIS_MANAGER_NAME: $n"
+  if [ -n "${CMUX_WORKSPACE_ID:-}" ] && [ "${JARVIS_MANAGER_TAB:-on}" != off ]; then
+    ( run_bounded 20 "$SCRIPT_DIR/jarvis-setup.sh" manager-tab ) </dev/null >/dev/null 2>&1 &
+  fi
   b=$(backend_choice)
   [ "$b" = unset ] && gaps+=("backend choice (cmux tabs or not)")
   p=$(missing_plugins)
@@ -352,6 +374,36 @@ cmd_address() {
   if [ "$v" = none ]; then echo "ok: no special address (Jarvis says \"you\")"; else echo "ok: Jarvis will call you $v"; fi
 }
 
+cmd_name() {
+  [ "$#" -ge 1 ] || die "usage: name <name>|default"
+  mkdir -p "$CONFIG"
+  local v="$*"
+  case "$v" in *$'\n'*|*/*) die "name must be one line without /" ;; esac
+  if [ "$v" = default ]; then
+    rm -f "$CONFIG/manager-name"
+    echo "ok: the manager is $DEFAULT_MANAGER_NAME (restart to apply)"
+  else
+    printf '%s\n' "$v" > "$CONFIG/manager-name"
+    echo "ok: the manager is $v (restart to apply)"
+  fi
+}
+
+# Name, pin and color the manager tab from the session start, so a manager that
+# never spawned a worker (any harness) still gets its tab. Inert outside cmux or
+# without config/cmux-layout=workers; detect bounds the whole pass to 20s.
+cmd_manager_tab() {
+  [ -n "${CMUX_WORKSPACE_ID:-}" ] || return 0
+  FM_HOME="$HOME_DIR"; export FM_HOME
+  # shellcheck source=bin/backends/cmux.sh
+  . "$SCRIPT_DIR/backends/cmux.sh" >/dev/null 2>&1 || return 0
+  fm_cmux_layout_enabled || return 0
+  local ws w
+  ws=$(fm_cmux_layout_manager_ws) || return 0
+  w=$(fm_cmux_layout_window_of "$ws")
+  [ -n "$w" ] || return 0
+  fm_cmux_layout_place_manager "$ws" "$w"
+}
+
 shortcut_rcs() {  # prints the rc files to edit, one per line (given or the defaults)
   if [ "${#SHORTCUT_RCS[@]}" -gt 0 ]; then
     printf '%s\n' "${SHORTCUT_RCS[@]}"
@@ -512,5 +564,7 @@ case "${1:-}" in
   plugin-autoupdate) shift; cmd_plugin_autoupdate "$@" ;;
   shortcut) shift; cmd_shortcut "$@" ;;
   address) shift; cmd_address "$@" ;;
+  name) shift; cmd_name "$@" ;;
+  manager-tab) cmd_manager_tab ;;
   *) awk 'NR>1 && !/^#/ {exit} NR>1 {sub(/^# ?/, ""); print}' "$0"; exit 2 ;;
 esac

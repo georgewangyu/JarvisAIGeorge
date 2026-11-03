@@ -45,7 +45,7 @@ fm_cmux_layout_secondmate_id() {
 }
 
 # Visible manager-tab name. config/cmux-home-name wins. Otherwise a primary is
-# "JarvisAIGeorge" and a secondmate home is "Friday <N> · <Charter>": N is the
+# config/manager-name (bin/jarvis-setup.sh name), default "JarvisAIGeorge", and a secondmate home is "Friday <N> · <Charter>": N is the
 # home's 1-based position in its local parent's data/secondmates.md (omitted
 # when the parent cannot be read, e.g. a remote parent), and Charter is
 # config/cmux-charter-name or the secondmate id in title case.
@@ -59,7 +59,9 @@ fm_cmux_layout_home_name() {
       num=$(fm_cmux_layout_friday_number "$sm")
       if [ -n "$num" ]; then n="Friday $num · $charter"; else n="Friday · $charter"; fi
     else
-      n="JarvisAIGeorge"
+      f="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}/manager-name"
+      [ -f "$f" ] && IFS= read -r n < "$f"
+      [ -n "$n" ] || n="JarvisAIGeorge"
     fi
   fi
   printf '%s' "$n"

@@ -28,6 +28,8 @@ Using Codex instead: the same three lines with `codex` in place of `claude`. See
 
 On later starts Jarvis is quiet unless something needs a call (a missing piece, an update).
 
+The manager is named JarvisAIGeorge in Claude Code and Codex alike. To rename it, run `bin/jarvis-setup.sh name <name>` (stored in the gitignored `config/manager-name`; `name default` undoes it) and restart. The cmux manager tab takes the same name.
+
 ## Requirements
 
 - Claude Code or Codex, logged in.
