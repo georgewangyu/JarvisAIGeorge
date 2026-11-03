@@ -81,6 +81,8 @@ make_settle_case() {
   fakebin=$(make_settle_fakebin "$case_dir/fake")
   mkdir -p "$home/data" "$home/projects" "$home/state" "$home/config"
   printf 'codex\n' > "$home/config/crew-harness"
+  # Worktree-settle is a worktree-mode behavior; this fork defaults to shared-checkout.
+  printf 'worktree\n' > "$home/config/workspace-isolation"
   fm_git_worktree "$proj" "$wt" "wt-$name"
   fm_git_init_commit "$stale"
   mkdir -p "$home/data/$id"

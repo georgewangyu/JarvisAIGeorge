@@ -272,6 +272,11 @@ fm_test_spawn_home() {
   local home=$1 harness=${2-}
   mkdir -p "$home/data" "$home/projects" "$home/state" "$home/config"
   touch "$home/state/.last-watcher-beat"
+  # These spawn fixtures build isolated task worktrees, FirstMate's model. This
+  # fork defaults to shared-checkout mode (bin/fm-workspace-lib.sh), so pin
+  # worktree mode here; tests/fm-workspace-isolation.test.sh removes the file
+  # to exercise the shared-checkout default.
+  printf 'worktree\n' > "$home/config/workspace-isolation"
   if [ -n "$harness" ]; then
     printf '%s\n' "$harness" > "$home/config/crew-harness"
   fi

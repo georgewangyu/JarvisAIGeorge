@@ -62,6 +62,9 @@ make_home() {  # <name> [task-id...]
   mkdir -p "$home/state" "$home/config" "$home/data" "$home/projects"
   touch "$home/state/.last-watcher-beat"
   printf '%s\n' claude > "$home/config/crew-harness"
+  # These cases spawn and tear down isolated worktrees, FirstMate's model; this
+  # fork defaults to shared-checkout (tests/fm-workspace-isolation.test.sh).
+  printf 'worktree\n' > "$home/config/workspace-isolation"
   printf '%s\n' '# Backlog' '' '## In flight' '' '## Queued' '' '## Done' \
     > "$home/data/backlog.md"
   # Pin the adapter per case: without it fm_tasks_axi_backend would fall through
