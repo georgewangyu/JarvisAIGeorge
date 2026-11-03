@@ -457,7 +457,7 @@ test_create_task_refuses_duplicate_label() {
   local dir fb out status title
   dir="$TMP_ROOT/dup-task"; mkdir -p "$dir/responses"
   title=$(cmux_expected_scoped_title fm-dup1)
-  cmux_tree_response "$dir" 1 window-1 "aaaaaaaa-0000-0000-0000-000000000000" "$title" surface-1
+  cmux_tree_response "$dir" 1 window-1 "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa" "$title" surface-1
   fb=$(make_cmux_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-dup1 /tmp/proj' "$ROOT" 2>&1 )
@@ -521,13 +521,13 @@ test_create_task_creates_and_parses_ids() {
   cmux_tree_response "$dir" 1 window-1 other independent other-surface
   # 2: new-workspace (silent on success)
   # 3: native app-wide tree (post-create id resolution) -> match
-  cmux_tree_response "$dir" 3 window-1 "bbbbbbbb-1111-1111-1111-111111111111" "$title" "cccccccc-2222-2222-2222-222222222222"
+  cmux_tree_response "$dir" 3 window-1 "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" "$title" "cccccccc-2222-2222-2222-cccccccccccc"
   # 4: native tree confirms the default surface identity.
-  cmux_tree_response "$dir" 4 window-1 "bbbbbbbb-1111-1111-1111-111111111111" "$title" "cccccccc-2222-2222-2222-222222222222"
+  cmux_tree_response "$dir" 4 window-1 "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" "$title" "cccccccc-2222-2222-2222-cccccccccccc"
   fb=$(make_cmux_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-newtask /tmp/proj' "$ROOT" )
-  [ "$out" = "bbbbbbbb-1111-1111-1111-111111111111 cccccccc-2222-2222-2222-222222222222" ] \
+  [ "$out" = "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb cccccccc-2222-2222-2222-cccccccccccc" ] \
     || fail "create_task should echo '<workspace_id> <surface_id>', got '$out'"
   assert_contains "$(cat "$dir/log")" $'\x1f''new-workspace'$'\x1f''--name'$'\x1f'"$title"$'\x1f''--cwd'$'\x1f''/tmp/proj' \
     "create_task did not call new-workspace with the right name/cwd"
@@ -603,12 +603,12 @@ test_target_ready_checks_expected_label() {
   local dir fb title
   dir="$TMP_ROOT/ready-label-ok"; mkdir -p "$dir/responses"
   title=$(cmux_expected_scoped_title fm-label)
-  cmux_tree_response "$dir" 1 window-1 "aaaaaaaa-0000-0000-0000-000000000000" "$title" "bbbbbbbb-1111-1111-1111-111111111111"
+  cmux_tree_response "$dir" 1 window-1 "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa" "$title" "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb"
   # 2: list-panes --json --id-format uuids -> matching surface
-  cmux_panes_response "$dir" 2 "bbbbbbbb-1111-1111-1111-111111111111"
+  cmux_panes_response "$dir" 2 "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb"
   fb=$(make_cmux_fakebin "$dir")
   PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
-    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_target_ready "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111" fm-label' "$ROOT"
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_target_ready "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa:bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" fm-label' "$ROOT"
   expect_code 0 $? "target_ready should succeed when the workspace title matches the expected label"
   cmux_assert_call_order "$dir/log" $'\x1f''rpc'$'\x1f''system.tree' $'\x1f''list-panes' \
     "target_ready did not check the label before list-panes"
@@ -618,10 +618,10 @@ test_target_ready_checks_expected_label() {
 test_target_ready_rejects_label_mismatch() {
   local dir fb status
   dir="$TMP_ROOT/ready-label-mismatch"; mkdir -p "$dir/responses"
-  cmux_tree_response "$dir" 1 window-1 "aaaaaaaa-0000-0000-0000-000000000000" "not-the-task" surface-1
+  cmux_tree_response "$dir" 1 window-1 "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa" "not-the-task" surface-1
   fb=$(make_cmux_fakebin "$dir")
   PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
-    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_target_ready "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111" fm-label' "$ROOT"
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_target_ready "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa:bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" fm-label' "$ROOT"
   status=$?
   [ "$status" -ne 0 ] || fail "target_ready should reject a workspace whose title does not match the expected label"
   assert_not_contains "$(cat "$dir/log")" $'\x1f''list-panes' \
@@ -697,16 +697,16 @@ test_send_key_recovers_stale_target_by_label() {
   local dir fb title
   dir="$TMP_ROOT/sendkey-stale-target"; mkdir -p "$dir/responses"
   title=$(cmux_expected_scoped_title fm-label)
-  cmux_tree_response "$dir" 1 window-1 "cccccccc-2222-2222-2222-222222222222" "$title" "dddddddd-3333-3333-3333-333333333333"
-  cmux_tree_response "$dir" 2 window-1 "cccccccc-2222-2222-2222-222222222222" "$title" "dddddddd-3333-3333-3333-333333333333"
-  cmux_tree_response "$dir" 3 window-1 "cccccccc-2222-2222-2222-222222222222" "$title" "dddddddd-3333-3333-3333-333333333333"
+  cmux_tree_response "$dir" 1 window-1 "cccccccc-2222-2222-2222-cccccccccccc" "$title" "dddddddd-3333-3333-3333-dddddddddddd"
+  cmux_tree_response "$dir" 2 window-1 "cccccccc-2222-2222-2222-cccccccccccc" "$title" "dddddddd-3333-3333-3333-dddddddddddd"
+  cmux_tree_response "$dir" 3 window-1 "cccccccc-2222-2222-2222-cccccccccccc" "$title" "dddddddd-3333-3333-3333-dddddddddddd"
   fb=$(make_cmux_fakebin "$dir")
   PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
-    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_send_key "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111" Enter fm-label' "$ROOT"
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_send_key "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa:bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" Enter fm-label' "$ROOT"
   expect_code 0 $? "send_key should recover a stale cmux target when the expected label is live"
-  assert_contains "$(cat "$dir/log")" $'\x1f''send-key'$'\x1f''--workspace'$'\x1f''cccccccc-2222-2222-2222-222222222222'$'\x1f''--surface'$'\x1f''dddddddd-3333-3333-3333-333333333333'$'\x1f''enter' \
+  assert_contains "$(cat "$dir/log")" $'\x1f''send-key'$'\x1f''--workspace'$'\x1f''cccccccc-2222-2222-2222-cccccccccccc'$'\x1f''--surface'$'\x1f''dddddddd-3333-3333-3333-dddddddddddd'$'\x1f''enter' \
     "send_key did not use the refreshed cmux workspace/surface ids"
-  assert_not_contains "$(cat "$dir/log")" $'\x1f''send-key'$'\x1f''--workspace'$'\x1f''aaaaaaaa-0000-0000-0000-000000000000' \
+  assert_not_contains "$(cat "$dir/log")" $'\x1f''send-key'$'\x1f''--workspace'$'\x1f''aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa' \
     "send_key should not target the stale cmux workspace id after label recovery"
   pass "fm_backend_cmux_send_key: recovers stale workspace/surface ids by expected label"
 }
@@ -1032,14 +1032,14 @@ test_send_text_submit_send_failed_when_target_absent() {
 test_window_of_workspace_finds_window_and_count() {
   local dir fb out
   dir="$TMP_ROOT/win-of-ws"; mkdir -p "$dir/responses"
-  cmux_tree_response "$dir" 1 "e1111111-0000-0000-0000-000000000000" "ffffffff-0000-0000-0000-000000000000" other sf-other
-  jq --arg win "e2222222-0000-0000-0000-000000000000" '
-    .windows += [{id:$win,workspace_count:1,workspaces:[{id:"aaaaaaaa-0000-0000-0000-000000000000",title:"the-task",description:null,panes:[{id:"pane-target",surface_count:1,surface_ids:["sf-target"],surfaces:[{id:"sf-target"}]}]}]}]
+  cmux_tree_response "$dir" 1 "e1111111-0000-0000-0000-e1111111eeee" "ffffffff-0000-0000-0000-ffffffffffff" other sf-other
+  jq --arg win "e2222222-0000-0000-0000-e2222222eeee" '
+    .windows += [{id:$win,workspace_count:1,workspaces:[{id:"aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa",title:"the-task",description:null,panes:[{id:"pane-target",surface_count:1,surface_ids:["sf-target"],surfaces:[{id:"sf-target"}]}]}]}]
   ' "$dir/responses/1.out" > "$dir/responses/1.tmp" && mv "$dir/responses/1.tmp" "$dir/responses/1.out"
   fb=$(make_cmux_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
-    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_window_of_workspace "aaaaaaaa-0000-0000-0000-000000000000"' "$ROOT" )
-  [ "$out" = "e2222222-0000-0000-0000-000000000000 1" ] \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_window_of_workspace "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa"' "$ROOT" )
+  [ "$out" = "e2222222-0000-0000-0000-e2222222eeee 1" ] \
     || fail "window_of_workspace should echo the owning window and its matched-list count, got '$out'"
   assert_grep $'\x1f''rpc'$'\x1f''system.tree' "$dir/log" "window_of_workspace did not use native tree"
   pass "fm_backend_cmux_window_of_workspace: resolves the owning window from one native tree"
@@ -1048,10 +1048,10 @@ test_window_of_workspace_finds_window_and_count() {
 test_window_of_workspace_empty_when_not_found() {
   local dir fb out
   dir="$TMP_ROOT/win-of-ws-none"; mkdir -p "$dir/responses"
-  cmux_tree_response "$dir" 1 "e1111111-0000-0000-0000-000000000000" "ffffffff-0000-0000-0000-000000000000" other sf-other
+  cmux_tree_response "$dir" 1 "e1111111-0000-0000-0000-e1111111eeee" "ffffffff-0000-0000-0000-ffffffffffff" other sf-other
   fb=$(make_cmux_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
-    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_window_of_workspace "aaaaaaaa-0000-0000-0000-000000000000"' "$ROOT" )
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_window_of_workspace "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa"' "$ROOT" )
   [ -z "$out" ] || fail "window_of_workspace should echo nothing when the workspace is not found, got '$out'"
   pass "fm_backend_cmux_window_of_workspace: echoes nothing when no window holds the workspace"
 }
@@ -1063,15 +1063,15 @@ make_cmux_close_case() {  # <name> <mode>
   mkdir -p "$dir/fakebin" "$dir/home/state" "$dir/home/config" "$dir/home/data"
   printf '%s\n' "$2" > "$dir/mode"
   cmux_expected_scoped_title fm-close-task > "$dir/title"
-  printf '%s\n' aaaaaaaa-0000-0000-0000-000000000000 > "$dir/wsid"
+  printf '%s\n' aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa > "$dir/wsid"
   cat > "$dir/fakebin/cmux" <<'SH'
 #!/usr/bin/env bash
 set -u
 d=${FM_CMUX_CLOSE_DIR:?}
 mode=$(cat "$d/mode")
 ws=$(cat "$d/wsid")
-sf=bbbbbbbb-1111-1111-1111-111111111111
-win=eeeeeeee-0000-0000-0000-000000000000
+sf=bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb
+win=eeeeeeee-0000-0000-0000-eeeeeeeeeeee
 printf '%s\n' "$*" >> "$d/log"
 case "$1" in
   version)
@@ -1195,7 +1195,7 @@ SH
 run_cmux_close_case() {  # <case> [expected-label]
   FM_CMUX_CLOSE_DIR="$1" FM_HOME="$1/home" FM_ROOT="$ROOT" FM_CMUX_LAYOUT=off \
     FM_CMUX_CLOSE_WAIT_TRIES="${FM_CMUX_CLOSE_WAIT_TRIES:-2}" FM_CMUX_CLOSE_WAIT_SLEEP=0 \
-    PATH="$1/fakebin:$PATH" bash -c '. "$1"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111" "" "$2"' \
+    PATH="$1/fakebin:$PATH" bash -c '. "$1"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa:bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" "" "$2"' \
     _ "${FM_TEST_CMUX_CLOSE_ADAPTER:-$ROOT/bin/backends/cmux.sh}" "${2:-}"
 }
 
@@ -1217,7 +1217,7 @@ test_create_waits_without_recreating() {
       rc=$?
       if [ "$mode" = launch-delay ]; then
         [ "$rc" = 0 ] || fail "delayed $grouped create failed: $(cat "$dir/err")"
-        assert_equals 'aaaaaaaa-0000-0000-0000-000000000000 bbbbbbbb-1111-1111-1111-111111111111' "$out" 'delayed readiness returned wrong endpoint'
+        assert_equals 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb' "$out" 'delayed readiness returned wrong endpoint'
       else
         [ "$rc" != 0 ] || fail "$mode must not announce a ready task"
       fi
@@ -1256,7 +1256,7 @@ test_liveness_refuses_incomplete_inventory() {
       PATH="$dir/fakebin:$PATH" bash -c '
         . "$1"
         fm_backend_cmux_ping_state() { printf ok; }
-        fm_backend_cmux_agent_state "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111"
+        fm_backend_cmux_agent_state "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa:bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb"
       ' _ "$ROOT/bin/backends/cmux.sh")
     assert_equals unreadable "$state" "$mode must not license recovery"
   done
@@ -1358,9 +1358,9 @@ test_kill_never_forces_unbound_or_shared_workspace() {
 test_kill_recovers_stale_target_by_label() {
   local dir
   dir=$(make_cmux_close_case kill-recovered confirm)
-  printf '%s\n' cccccccc-2222-2222-2222-222222222222 > "$dir/wsid"
+  printf '%s\n' cccccccc-2222-2222-2222-cccccccccccc > "$dir/wsid"
   run_cmux_close_case "$dir" fm-close-task || fail "scoped label recovery failed"
-  assert_grep 'close-workspace --workspace cccccccc-2222-2222-2222-222222222222' "$dir/log" "close did not use recovered identity"
+  assert_grep 'close-workspace --workspace cccccccc-2222-2222-2222-cccccccccccc' "$dir/log" "close did not use recovered identity"
   assert_no_grep 'close-workspace --workspace aaaaaaaa-' "$dir/log" "close used the stale workspace"
   dir=$(make_cmux_close_case kill-already-gone normal)
   touch "$dir/gone"
@@ -1381,8 +1381,8 @@ test_teardown_cmux_retains_unproven_endpoint() {
     ( cd "$dir/home" && tasks-axi add close-task 'close fixture' --kind ship --file data/backlog.md >/dev/null && tasks-axi start close-task --file data/backlog.md >/dev/null ) || fail "backlog fixture failed"
     fm_write_meta "$dir/home/state/close-task.meta" \
       'backend=cmux' 'endpoint_task_id=close-task' 'spawn_gen=s1.2.3' \
-      'window=aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111' \
-      'cmux_workspace_id=aaaaaaaa-0000-0000-0000-000000000000' 'cmux_surface_id=bbbbbbbb-1111-1111-1111-111111111111' \
+      'window=aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa:bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb' \
+      'cmux_workspace_id=aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa' 'cmux_surface_id=bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb' \
       "worktree=$dir/project" "project=$dir/project" 'kind=ship' 'mode=local-only' 'workspace_isolation=shared-checkout'
     cp "$dir/home/state/close-task.meta" "$dir/meta-before"
     FM_CMUX_CLOSE_DIR="$dir" FM_CMUX_LAYOUT=off FM_HOME="$dir/home" FM_ROOT_OVERRIDE="$ROOT" \
@@ -1419,13 +1419,13 @@ test_list_live_filters_by_title_prefix() {
   title=$(cmux_expected_scoped_title fm-task1)
   other_title=$(cmux_expected_scoped_title fm-task2 "$ROOT" "$other_root")
   cmux_tree_response "$dir" 1 window-1 \
-    "aaaaaaaa-0000-0000-0000-000000000000" "$title" "bbbbbbbb-1111-1111-1111-111111111111" \
-    "dddddddd-8888-8888-8888-888888888888" "$other_title" other-surface \
-    "cccccccc-9999-9999-9999-999999999999" zsh shell-surface
+    "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa" "$title" "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" \
+    "dddddddd-8888-8888-8888-dddddddddddd" "$other_title" other-surface \
+    "cccccccc-9999-9999-9999-cccccccccccc" zsh shell-surface
   fb=$(make_cmux_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_list_live' "$ROOT" )
-  [ "$out" = $'aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111\tfm-task1' ] \
+  [ "$out" = $'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa:bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb\tfm-task1' ] \
     || fail "list_live should list only the in-home task workspace with its plain label and surface id, got '$out'"
   pass "fm_backend_cmux_list_live: lists only this home's scoped task workspaces using plain fm-<id> labels"
 }
