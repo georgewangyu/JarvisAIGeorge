@@ -182,6 +182,7 @@ cmux restores every tab after a reboot or an app relaunch and types a restore co
   A new epoch heals once the app has been up 45 seconds; while a tab cannot be read yet or an ask is open, a detached retry repeats the pass every minute for at most an hour, then the epoch is stamped.
 - **Per task, in order:**
   1. Finds the tab again by its scoped label in every window and rewrites stale workspace and surface ids in the task record.
+     Exactly one workspace may carry the label; with several, the task is reported as ambiguous, its record stays byte-identical, and neither tab is read, selected, or typed into.
   2. Selects a tab that cannot be read yet so cmux starts its terminal, then reselects the window's previous tab.
   3. Offers the screen to prompt hooks (below).
   4. Erases `cmux restore ...` text typed into a live agent's composer with Backspace and re-reads it; it never presses Enter there.

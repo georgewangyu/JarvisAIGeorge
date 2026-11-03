@@ -21,7 +21,9 @@
 # Per ordinary (non-secondmate) task, in order:
 #   1. Stale endpoint ids: the tab is found again by its scoped label (title or
 #      description, every window) and the meta window=/cmux_*_id= lines are
-#      rewritten under the task's meta lock.
+#      rewritten under the task's meta lock. Exactly one workspace may carry
+#      the label; with several, the task is reported ambiguous, its record stays
+#      byte-identical, and no surface is read, selected, or typed into.
 #   2. Unstarted or unreadable surface: the tab is selected once so cmux starts
 #      its terminal, then the window's previous selection is restored.
 #   3. Prompt hooks: each config/cmux-heal-hooks.d/<name>.sh (or the directory
@@ -186,8 +188,23 @@ ALL=$(fm_backend_cmux_all_workspaces_json) || exit 0
 HOMETAG=$(fm_backend_cmux_home_label)
 
 # Locate a task tab by its scoped label in every window: "<ws> <sf> <window>".
+# Exactly one workspace may carry the label (title or description). Returns 1
+# when none does and 2 when several do (heal_label_count gives the count): an
+# ambiguous label is never resolved by picking one, so the caller leaves the
+# task record byte-identical and touches no surface (issue #16). Duplicate
+# ordinary titles that are not task labels are irrelevant here.
+heal_label_count() {  # <id>
+  local n
+  n=$(printf '%s' "$ALL" | jq -r --arg l "fm-$HOMETAG-$1" \
+    '[.workspaces[]? | select(.title == $l or .description == $l) | .id] | unique | length' 2>/dev/null)
+  case "$n" in ''|*[!0-9]*) n=0 ;; esac
+  printf '%s' "$n"
+}
 heal_locate() {  # <id>
-  local want="fm-$HOMETAG-$1" ws sf w
+  local want="fm-$HOMETAG-$1" ws sf w n
+  n=$(heal_label_count "$1")
+  [ "$n" -eq 0 ] && return 1
+  [ "$n" -gt 1 ] && return 2
   ws=$(printf '%s' "$ALL" | jq -r --arg l "$want" 'first(.workspaces[]? | select(.title == $l or .description == $l) | .id) // empty' 2>/dev/null)
   [ -n "$ws" ] || return 1
   sf=$(fm_backend_cmux_surface_id_for_workspace "$ws")
@@ -282,7 +299,15 @@ heal_brief_runs_loop() {  # <id>
 
 for meta in "${metas[@]}"; do
   id=$(basename "$meta" .meta)
-  loc=$(heal_locate "$id") || { info "fm-$id: tab not found; left for dead-endpoint recovery"; continue; }
+  loc=$(heal_locate "$id")
+  lrc=$?
+  if [ "$lrc" -eq 2 ]; then
+    ask "fm-$id: $(heal_label_count "$id") workspaces carry this task's label; its record and those tabs were left untouched"
+    continue
+  elif [ "$lrc" -ne 0 ]; then
+    info "fm-$id: tab not found; left for dead-endpoint recovery"
+    continue
+  fi
   read -r ws sf win <<< "$loc"
   if [ "$(fm_meta_get "$meta" cmux_workspace_id)" != "$ws" ] || [ "$(fm_meta_get "$meta" cmux_surface_id)" != "$sf" ]; then
     if act "refresh fm-$id endpoint ids" heal_rewrite_endpoint "$meta" "$ws" "$sf"; then

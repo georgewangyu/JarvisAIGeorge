@@ -223,6 +223,31 @@ SH
   pass "reboot heal: hook seam answers its own prompt; an unowned prompt is an ask, never answered"
 }
 
+test_duplicate_label_is_ambiguous_and_untouched() {
+  local d="$TMP_ROOT/duplicate" tag out before
+  mkdir -p "$d"; make_fake "$d"; new_home "$d"
+  tag=$(hometag "$d")
+  # The recorded workspace is gone; two live workspaces carry the same label.
+  add_tab "$d" W-DUP-A S-DUP-A "fm-$tag-dup" ttys090 190 -zsh
+  add_tab "$d" W-DUP-B S-DUP-B "fm-$tag-dup" ttys091 191 -zsh
+  : > "$d/fake/restore-works.S-DUP-A"
+  : > "$d/fake/restore-works.S-DUP-B"
+  echo '$' > "$d/fake/screen.S-DUP-A"
+  echo '$' > "$d/fake/screen.S-DUP-B"
+  # Duplicate ordinary (non-task) titles elsewhere stay valid.
+  add_tab "$d" W-PLAIN-1 S-PLAIN-1 "" ttys092 192 -zsh
+  add_tab "$d" W-PLAIN-2 S-PLAIN-2 "" ttys093 193 -zsh
+  write_meta "$d" dup W-GONE S-GONE claude_session_id=0f0f0f0f-aaaa-bbbb-cccc-dddddddddddd
+  before=$(shasum -a 256 "$d/home/state/dup.meta")
+  out=$(run_heal "$d" --force)
+  [ "$(shasum -a 256 "$d/home/state/dup.meta")" = "$before" ] || fail "an ambiguous label must leave the task record byte-identical"
+  printf '%s' "$out" | grep -q 'fm-dup: 2 workspaces carry this task.s label' || fail "the ambiguity must be reported: $out"
+  printf '%s' "$out" | grep -q 'endpoint ids refreshed' && fail "an ambiguous label must never rebind the endpoint: $out"
+  ! grep -Eq 'S-DUP-(A|B)|W-DUP-(A|B)' "$d/fake/log" || fail "no surface of an ambiguous label may be read, selected, or typed into: $(grep -E 'DUP' "$d/fake/log")"
+  grep -q 'fm-dup' "$d/home/state/cmux-heal-status.md" || fail "the ambiguity must land in the status file"
+  pass "reboot heal: a duplicated task label is reported ambiguous with the record byte-identical and both tabs untouched"
+}
+
 test_refreshes_endpoint_and_clears_residue() {
   local d="$TMP_ROOT/residue" tag out
   mkdir -p "$d"; make_fake "$d"; new_home "$d"
@@ -326,6 +351,7 @@ test_epoch_gate
 test_dry_run_changes_nothing
 test_prompt_hooks
 test_refreshes_endpoint_and_clears_residue
+test_duplicate_label_is_ambiguous_and_untouched
 test_trust_prompt_only_for_own_copy
 test_bare_shell_restored
 test_unrecoverable_left_for_recovery
