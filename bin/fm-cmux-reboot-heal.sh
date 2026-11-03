@@ -137,7 +137,7 @@ fi
 # One pass at a time per home (session start and the detached retry).
 LOCK="$STATE/.cmux-heal.lock"
 if ! mkdir "$LOCK" 2>/dev/null; then
-  [ "$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || stat -c %Y "$LOCK" 2>/dev/null || date +%s) ))" -gt 900 ] || exit 0
+  [ "$(( $(date +%s) - $(stat -c %Y "$LOCK" 2>/dev/null || stat -f %m "$LOCK" 2>/dev/null || date +%s) ))" -gt 900 ] || exit 0
   rmdir "$LOCK" 2>/dev/null; mkdir "$LOCK" 2>/dev/null || exit 0
 fi
 trap 'rmdir "$LOCK" 2>/dev/null' EXIT
@@ -396,7 +396,7 @@ done
 if fm_cmux_layout_enabled; then
   beat="$STATE/.cmux-board-beat"
   age=999999
-  [ -f "$beat" ] && age=$(( $(date +%s) - $(stat -f %m "$beat" 2>/dev/null || stat -c %Y "$beat" 2>/dev/null || echo 0) ))
+  [ -f "$beat" ] && age=$(( $(date +%s) - $(stat -c %Y "$beat" 2>/dev/null || stat -f %m "$beat" 2>/dev/null || echo 0) ))
   if [ "$age" -gt $(( 3 * ${FM_CMUX_BOARD_INTERVAL:-10} + 30 )) ]; then
     gw=$(fm_cmux_layout_ensure 2>/dev/null)
     gid=${gw%%$'\t'*}

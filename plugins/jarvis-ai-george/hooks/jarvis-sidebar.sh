@@ -423,7 +423,7 @@ writer_refs() {
   key="$cwd@$branch"
   get refs_key; old=$V
   now=$(date +%s)
-  [ -f "$SD/refs_key" ] && age=$(( now - $(stat -f %m "$SD/refs_key" 2>/dev/null || stat -c %Y "$SD/refs_key" 2>/dev/null || echo 0) ))
+  [ -f "$SD/refs_key" ] && age=$(( now - $(stat -c %Y "$SD/refs_key" 2>/dev/null || stat -f %m "$SD/refs_key" 2>/dev/null || echo 0) ))
   [ "$old" = "$key" ] && [ "$age" -lt "${JARVIS_SIDEBAR_REFS_SECS:-120}" ] && return 0
   put refs_key "$key"
   base=$(bounded 2 git -C "$cwd" symbolic-ref --short -q refs/remotes/origin/HEAD) || base=""
