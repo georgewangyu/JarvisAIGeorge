@@ -22,7 +22,8 @@ test_timeouts_fit_caps() {
 import json, sys
 hooks = json.load(open(sys.argv[1]))["hooks"]
 cap = int(sys.argv[2])
-want = {"SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "Notification", "Stop", "SessionEnd"}
+want = {"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+        "PermissionRequest", "Notification", "SubagentStart", "SubagentStop", "Stop", "SessionEnd"}
 assert set(hooks) == want, f"Claude Code events must stay covered: {sorted(hooks)}"
 for event, groups in hooks.items():
     for g in groups:
@@ -40,14 +41,16 @@ test_session_end_bounded_with_hung_cmux() {
   mkdir -p "$bin"
   printf '#!/usr/bin/env bash\nsleep 30\n' > "$bin/cmux"
   chmod +x "$bin/cmux"
-  printf 'ready' > "${TMPDIR:-/tmp}/jarvis-sidebar-$(id -u)-ws-hung"
   start=$(date +%s)
-  printf '%s' '{"hook_event_name":"SessionEnd"}' \
-    | PATH="$bin:$PATH" CMUX_WORKSPACE_ID=ws-hung JARVIS_SIDEBAR_CMUX_SECS=1 bash "$HOOK"
+  for e in SessionStart UserPromptSubmit SessionEnd; do
+    printf '{"hook_event_name":"%s","session_id":"s-hung","prompt":"x"}' "$e" \
+      | PATH="$bin:$PATH" CMUX_WORKSPACE_ID=ws-hung JARVIS_SIDEBAR_STATE="$TMP_ROOT/state" \
+        JARVIS_SIDEBAR_CMUX_SECS=1 JARVIS_SIDEBAR_CLIENT_PID=$$ bash "$HOOK"
+  done
   end=$(date +%s)
   [ $((end - start)) -lt "$SESSION_END_CAP" ] || fail "SessionEnd took $((end - start))s with a hung cmux (cap ${SESSION_END_CAP}s)"
   pkill -f "$bin/cmux" 2>/dev/null || true
-  pass "sidebar hooks: SessionEnd ends inside the cap even when cmux hangs"
+  pass "sidebar hooks: hook runs return inside the cap even when cmux hangs (the writer is detached and bounded)"
 }
 
 test_timeouts_fit_caps

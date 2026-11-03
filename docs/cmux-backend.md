@@ -158,12 +158,41 @@ Without it the adapter behaves exactly as described above.
 - **Titles and identity.** A task tab is titled `◆ <task-id>`, and its scoped label `fm-<home-tag>-<id>` moves to the cmux workspace description.
   Every lookup accepts the title or the description, so home scoping, recovery, list, and cleanup keep working.
   Lifecycle lookups read every cmux window regardless of layout mode, so a teardown or peek run from another window still finds the task.
-- **Sidebar state for Claude.** The core plugin's `hooks/jarvis-sidebar.sh` sets a `jarvis` pill on its own workspace: `working` on a prompt or tool call, `needs you` on a permission prompt, `done` when a turn ends, cleared at session end.
-  Idle reminders are ignored, and it is a no-op outside cmux.
-  Codex workers get no pill: their launches turn Codex hooks off, so the board's polling is their only tab state (colors and counts).
+- **Sidebar state for Claude.** The core plugin's sidebar hook shows the session's state as pills on its own tab; see "Sidebar" below.
+  Codex workers get no pills: their launches turn Codex hooks off, so the board's polling is their only tab state (colors and counts).
 - **Wake and cleanup** are unchanged: the watcher wakes the manager on a worker's status event, and `bin/fm-teardown.sh` closes the worker tab only after its work has landed.
 
 Gate evidence and what is untested (Codex, secondmates): `docs/verification/runtime-backends.md#cmux`.
+
+## Sidebar
+
+`plugins/jarvis-ai-george/hooks/jarvis-sidebar.sh` runs on the session's hook events and shows its state as pills on its own cmux tab, top to bottom:
+
+| Pill | Shows |
+| --- | --- |
+| `jarvis_activity` | `Ready` at start, `Working: <ask>` during a turn, `Needs approval` on a permission prompt, then `Done: <last step>`, `Waiting: <ask>` when the turn ends on a question, or `Error: <last step>` after a failed tool |
+| `jarvis_tool` | the current tool (`Reading README.md`, `Checking git status`, `Running tests`), its past form once it finished, `<tool> failed`, or `Needs approval: <tool>` |
+| `jarvis_subagents` | `Subagents: <n> running (<type>)` while subagents run |
+| `jarvis_pr` | `PR #<n> <state>` for the session's branch, linked, from `gh pr view` |
+| `jarvis_issue` | `Issue #<n>`, linked: the PR's first closing issue, else a branch named like `issue-<n>` or `<n>-...` |
+
+- **Converging writes.** Each hook records the desired pill state and returns.
+  A writer reconciles desired against sent under a per-surface lock and repeats while a newer event arrived, so hooks that fire in parallel converge on the latest state.
+  A pill cmux refused is never marked sent and goes out on the next pass.
+- **Ownership.** The first session on a tab owns it, identified by its client process (pid and start time).
+  A different session with a live owner, such as a nested `claude -p` or a second client in a split pane, never drives the tab.
+  `/clear` in the same client re-adopts it, and when the owner is gone the next start or prompt takes over.
+- **Subagents** are tracked one file each and never move a finished turn back to Working.
+  An entry whose stop never came expires after `JARVIS_SIDEBAR_SUBAGENT_TTL_MIN` minutes (120).
+- **PR and issue lookups** run only in the writer, on start, stop, and after a `git` or `gh` command, at most once per branch every `JARVIS_SIDEBAR_REFS_SECS` seconds (120), and never on the default branch.
+- **Safety.** It is a no-op outside cmux, never writes stdout, and always exits 0.
+  cmux and `gh` only run in a detached writer with every call time-bounded (`JARVIS_SIDEBAR_CMUX_SECS`, `JARVIS_SIDEBAR_GH_SECS`), so a hook run returns well inside the 3-second Codex hook cap.
+- **Controls.** `JARVIS_SIDEBAR=off` turns it off.
+  State lives under `${XDG_STATE_HOME:-~/.local/state}/jarvis-ai-george/sidebar/<workspace>` (`JARVIS_SIDEBAR_STATE` overrides).
+- **Known limits.** Claude Code has no "permission granted" event, so the approval pill stays until the next tool event.
+  An Esc interrupt fires no Stop, so the activity line keeps `Working` until the next prompt.
+
+Regression entry points: `tests/jarvis-sidebar.test.sh` and `tests/jarvis-sidebar-hook.test.sh`.
 
 ## Agent liveness
 

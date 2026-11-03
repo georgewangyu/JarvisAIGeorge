@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # tests/fm-cmux-layout.test.sh - unit tests for the opt-in cmux Workers layout
-# (bin/backends/cmux-layout.sh) and the Claude sidebar hook
-# (plugins/jarvis-ai-george/hooks/jarvis-sidebar.sh). No real cmux: the hook
-# test uses a logging fake `cmux` on PATH. Live evidence: docs/cmux-backend.md
+# (bin/backends/cmux-layout.sh) and the Workers board. The sidebar hook has its
+# own suite, tests/jarvis-sidebar.test.sh. Live evidence: docs/cmux-backend.md
 # "Workers layout".
 set -u
 
@@ -57,29 +56,6 @@ test_buckets() {
   pass "cmux layout: crew states map to working, done, needs you, and unknown"
 }
 
-test_sidebar_hook() {
-  local d="$TMP_ROOT/hook" hook="$ROOT/plugins/jarvis-ai-george/hooks/jarvis-sidebar.sh"
-  mkdir -p "$d/bin" "$d/tmp"
-  cat > "$d/bin/cmux" <<'SH'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >> "$HOOK_LOG"
-SH
-  chmod +x "$d/bin/cmux"
-  run_hook() { printf '%s' "$1" | PATH="$d/bin:$PATH" TMPDIR="$d/tmp" HOOK_LOG="$d/log" CMUX_WORKSPACE_ID="${2-ws-1}" bash "$hook"; }
-  run_hook '{"hook_event_name":"PreToolUse"}'
-  run_hook '{"hook_event_name":"PreToolUse"}'
-  run_hook '{"hook_event_name":"Notification","notification_type":"idle_prompt"}'
-  run_hook '{"hook_event_name":"PermissionRequest"}'
-  run_hook '{"hook_event_name":"Stop"}'
-  run_hook '{"hook_event_name":"SessionEnd"}'
-  run_hook '{"hook_event_name":"PreToolUse"}' ''
-  [ "$(grep -c 'set-status jarvis working' "$d/log")" = 1 ] || fail "working must be written once (change-only)"
-  grep -q 'set-status jarvis needs you' "$d/log" || fail "permission request must show needs you"
-  grep -q 'set-status jarvis done' "$d/log" || fail "Stop must show done"
-  grep -q 'clear-status jarvis' "$d/log" || fail "SessionEnd must clear the pill"
-  [ "$(wc -l < "$d/log" | tr -d ' ')" = 4 ] || fail "idle reminder and non-cmux runs must write nothing: $(cat "$d/log")"
-  pass "jarvis-sidebar hook: change-only pill, idle reminders ignored, no-op outside cmux"
-}
 
 test_board_keeps_unknown_and_names_backend() {
   local h="$TMP_ROOT/board" out stub="$TMP_ROOT/board-crew-state.sh"
@@ -220,5 +196,4 @@ test_board_keeps_unknown_and_names_backend
 test_board_group_summary
 test_home_names_and_labels
 test_buckets
-test_sidebar_hook
 test_start_board_resolves_anchor_ref
