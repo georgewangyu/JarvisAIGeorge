@@ -385,29 +385,64 @@ fm_backend_cmux_surface_id_for_workspace() {  # <workspace_id>
 # focus-restore dance is needed, unlike zellij. Echoes "<workspace_id>
 # <surface_id>" on success.
 fm_backend_cmux_create_task() {  # <label> <cwd>
-  local label=$1 cwd=$2 title dup out wsid sfid
+  local label=$1 cwd=$2 title dup out ids rc
   title=$(fm_backend_cmux_scoped_title "$label")
   dup=$(fm_backend_cmux_workspace_id_for_label "$title")
   if [ -n "$dup" ]; then
     echo "error: cmux workspace '$title' already exists" >&2
     return 1
   fi
-  if fm_cmux_layout_enabled && wsid=$(fm_cmux_layout_create "$title" "$cwd") && [ -n "$wsid" ]; then
-    sfid=$(fm_backend_cmux_surface_id_for_workspace "$wsid")
-    if [ -n "$sfid" ]; then
-      printf '%s %s' "$wsid" "$sfid"
-      return 0
-    fi
+  if fm_cmux_layout_enabled; then
+    fm_cmux_layout_create "$title" "$cwd"
+    rc=$?
+    case "$rc" in
+      0)
+        # One acknowledged create: wait for it, never create again.
+        ids=$(fm_backend_cmux_await_created "$title") || {
+          echo "error: cmux created '$title' but it never became visible with a surface; the workspace is left in place for reconciliation" >&2
+          return 1
+        }
+        printf '%s' "$ids"
+        return 0
+        ;;
+      1)
+        # Unacknowledged grouped create: adopt it if it shows up anyway,
+        # otherwise fall back to one plain create.
+        ids=$(fm_backend_cmux_await_created "$title") && { printf '%s' "$ids"; return 0; }
+        ;;
+    esac
   fi
   out=$(fm_backend_cmux_cli new-workspace --name "$title" --cwd "$cwd" --focus false --id-format uuids 2>&1) || {
     echo "error: cmux new-workspace failed for '$title': $out" >&2
     return 1
   }
-  wsid=$(fm_backend_cmux_workspace_id_for_label "$title")
-  [ -n "$wsid" ] || { echo "error: could not resolve a cmux workspace id for '$title' after creation" >&2; return 1; }
-  sfid=$(fm_backend_cmux_surface_id_for_workspace "$wsid")
-  [ -n "$sfid" ] || { echo "error: could not resolve the default surface for cmux workspace '$title' ($wsid)" >&2; return 1; }
-  printf '%s %s' "$wsid" "$sfid"
+  ids=$(fm_backend_cmux_await_created "$title") || {
+    echo "error: cmux created '$title' but it never became visible with a surface; the workspace is left in place for reconciliation" >&2
+    return 1
+  }
+  printf '%s' "$ids"
+}
+
+# fm_backend_cmux_await_created: after an acknowledged create, wait (bounded)
+# until the scoped label resolves to a workspace that has a surface, and print
+# "<workspace_id> <surface_id>". cmux can acknowledge new-workspace before an
+# immediate `workspace list` shows it, so one empty read is not proof of
+# failure. FM_CMUX_CREATE_WAIT_TRIES (40) x FM_CMUX_CREATE_WAIT_SLEEP (0.25s).
+fm_backend_cmux_await_created() {  # <scoped-label>
+  local label=$1 i=0 tries=${FM_CMUX_CREATE_WAIT_TRIES:-40} nap=${FM_CMUX_CREATE_WAIT_SLEEP:-0.25} wsid sfid
+  while [ "$i" -lt "$tries" ]; do
+    wsid=$(fm_backend_cmux_workspace_id_for_label "$label")
+    if [ -n "$wsid" ]; then
+      sfid=$(fm_backend_cmux_surface_id_for_workspace "$wsid")
+      if [ -n "$sfid" ]; then
+        printf '%s %s' "$wsid" "$sfid"
+        return 0
+      fi
+    fi
+    i=$((i + 1))
+    sleep "$nap"
+  done
+  return 1
 }
 
 # fm_backend_cmux_parse_target: split "<workspace_uuid>:<surface_uuid>" on the

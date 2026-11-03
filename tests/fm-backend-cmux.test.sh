@@ -496,6 +496,102 @@ test_create_task_creates_and_parses_ids() {
   pass "fm_backend_cmux_create_task: creates a workspace and parses workspace_id/surface_id from list responses"
 }
 
+# --- create_task: visibility after an acknowledged create (issue #4) ---------
+
+cmux_create_count() {  # <log>
+  grep -c $'\x1f''new-workspace' "$1" 2>/dev/null || true
+}
+
+test_create_task_waits_for_delayed_visibility() {
+  local dir fb out title
+  dir="$TMP_ROOT/create-delayed"; mkdir -p "$dir/responses"
+  title=$(cmux_expected_scoped_title fm-slow)
+  printf '{"workspaces":[]}' > "$dir/responses/1.out"   # duplicate check
+  # 2: new-workspace acknowledged
+  printf '{"workspaces":[]}' > "$dir/responses/3.out"   # not yet listed
+  printf '{"workspaces":[]}' > "$dir/responses/4.out"   # still not listed
+  cmux_workspace_list_response "$dir" 5 "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" "$title"
+  cmux_panes_response "$dir" 6 "cccccccc-2222-2222-2222-cccccccccccc"
+  fb=$(make_cmux_fakebin "$dir")
+  out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" FM_CMUX_CREATE_WAIT_SLEEP=0 \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-slow /tmp/proj' "$ROOT" )
+  [ "$out" = "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb cccccccc-2222-2222-2222-cccccccccccc" ] \
+    || fail "a delayed-visible create should resolve, got '$out'"
+  [ "$(cmux_create_count "$dir/log")" = 1 ] || fail "exactly one create call expected"
+  pass "fm_backend_cmux_create_task: waits for a delayed-visible workspace with one create"
+}
+
+test_create_task_keeps_invisible_endpoint_without_recreating() {
+  local dir fb out status title
+  dir="$TMP_ROOT/create-never"; mkdir -p "$dir/responses"
+  title=$(cmux_expected_scoped_title fm-ghost)
+  printf '{"workspaces":[]}' > "$dir/responses/1.out"
+  fb=$(make_cmux_fakebin "$dir")
+  out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+    FM_CMUX_CREATE_WAIT_SLEEP=0 FM_CMUX_CREATE_WAIT_TRIES=3 \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-ghost /tmp/proj' "$ROOT" 2>&1 )
+  status=$?
+  [ "$status" -ne 0 ] || fail "a never-visible create must fail"
+  assert_contains "$out" "left in place for reconciliation" "the failure must say the endpoint was kept"
+  [ "$(cmux_create_count "$dir/log")" = 1 ] || fail "a never-visible create must not be retried"
+  assert_not_contains "$(cat "$dir/log")" $'\x1f''close-workspace' "an ambiguous endpoint must not be closed"
+  pass "fm_backend_cmux_create_task: a never-visible create fails once, keeps the endpoint, never creates twice"
+}
+
+test_create_task_missing_surface_fails_once() {
+  local dir fb status title i
+  dir="$TMP_ROOT/create-nosurface"; mkdir -p "$dir/responses"
+  title=$(cmux_expected_scoped_title fm-nosf)
+  printf '{"workspaces":[]}' > "$dir/responses/1.out"
+  for i in 3 5 7; do
+    cmux_workspace_list_response "$dir" "$i" "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" "$title"
+    cmux_panes_empty_response "$dir" $((i + 1))
+  done
+  fb=$(make_cmux_fakebin "$dir")
+  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+    FM_CMUX_CREATE_WAIT_SLEEP=0 FM_CMUX_CREATE_WAIT_TRIES=3 \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-nosf /tmp/proj' "$ROOT" >/dev/null 2>&1
+  status=$?
+  [ "$status" -ne 0 ] || fail "a workspace without a surface must fail"
+  [ "$(cmux_create_count "$dir/log")" = 1 ] || fail "a missing surface must not trigger another create"
+  pass "fm_backend_cmux_create_task: a workspace that never gets a surface fails without a second create"
+}
+
+test_create_task_failed_ack_does_not_wait() {
+  local dir fb status
+  dir="$TMP_ROOT/create-noack"; mkdir -p "$dir/responses"
+  printf '{"workspaces":[]}' > "$dir/responses/1.out"
+  echo 1 > "$dir/responses/2.exit"
+  fb=$(make_cmux_fakebin "$dir")
+  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" FM_CMUX_CREATE_WAIT_SLEEP=0 \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-noack /tmp/proj' "$ROOT" >/dev/null 2>&1
+  status=$?
+  [ "$status" -ne 0 ] || fail "a failed acknowledgement must fail"
+  [ "$(cmux_create_count "$dir/log")" = 1 ] || fail "a failed plain acknowledgement must not be retried"
+  pass "fm_backend_cmux_create_task: a failed plain acknowledgement fails with one create call"
+}
+
+test_create_task_grouped_ack_never_falls_back() {
+  local dir fb out title
+  dir="$TMP_ROOT/create-grouped"; mkdir -p "$dir/responses"
+  title=$(cmux_expected_scoped_title fm-grp)
+  printf '{"workspaces":[]}' > "$dir/responses/1.out"   # duplicate check
+  printf '{"workspaces":[]}' > "$dir/responses/2.out"   # first visibility read: not yet
+  cmux_workspace_list_response "$dir" 3 "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" "$title"
+  cmux_panes_response "$dir" 4 "cccccccc-2222-2222-2222-cccccccccccc"
+  fb=$(make_cmux_fakebin "$dir")
+  out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" FM_CMUX_CREATE_WAIT_SLEEP=0 \
+    bash -c '. "$0/bin/backends/cmux.sh"
+      fm_cmux_layout_enabled() { return 0; }
+      fm_cmux_layout_create() { echo grouped-create >> "$FM_CMUX_LOG"; return 0; }
+      fm_backend_cmux_workspaces_json() { fm_backend_cmux_cli workspace list --json --id-format uuids; }
+      fm_backend_cmux_create_task fm-grp /tmp/proj' "$ROOT" )
+  [ "$out" = "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb cccccccc-2222-2222-2222-cccccccccccc" ] || fail "grouped create should resolve, got '$out'"
+  [ "$(grep -c grouped-create "$dir/log")" = 1 ] || fail "one grouped create expected"
+  [ "$(cmux_create_count "$dir/log")" = 0 ] || fail "an acknowledged grouped create must never fall back to a plain create"
+  pass "fm_backend_cmux_create_task: an acknowledged grouped create waits for visibility and never creates a second workspace"
+}
+
 # --- target_ready / capture ---------------------------------------------------
 
 test_target_ready_fails_when_target_absent() {
@@ -1130,6 +1226,11 @@ test_ensure_running_fails_fast_on_denied_without_launching
 test_ensure_running_fails_fast_on_unauth_without_launching
 test_create_task_refuses_duplicate_label
 test_create_task_creates_and_parses_ids
+test_create_task_waits_for_delayed_visibility
+test_create_task_keeps_invisible_endpoint_without_recreating
+test_create_task_missing_surface_fails_once
+test_create_task_failed_ack_does_not_wait
+test_create_task_grouped_ack_never_falls_back
 test_target_ready_fails_when_target_absent
 test_target_ready_checks_expected_label
 test_target_ready_rejects_label_mismatch

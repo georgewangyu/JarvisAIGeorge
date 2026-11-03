@@ -83,6 +83,10 @@ Workspace UUIDs are not stable across an app relaunch, so recovery searches by t
 
 ## Current operation and safety
 
+A task workspace is created with exactly one create call.
+cmux can acknowledge `new-workspace` before an immediate `workspace list` shows it, so the adapter waits, bounded, for the scoped label to resolve to a workspace with a surface.
+A workspace that never becomes visible fails the spawn and is left in place for reconciliation; an acknowledged create is never repeated, in the plain or the grouped path.
+
 A genuinely fresh surface returns an internal error from `read-screen` until something has been written.
 Target readiness therefore uses the structural `list-panes` response instead of a content read.
 Capture remains bounded and locally trimmed after `read-screen` becomes available.

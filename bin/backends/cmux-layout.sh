@@ -217,19 +217,19 @@ fm_cmux_layout_ensure() {
   printf '%s\t%s' "$gid" "$w"
 }
 
-# Create a task workspace inside the Workers group. Echoes the new workspace
-# uuid, or returns 1 so the caller falls back to the plain create.
+# Create a task workspace inside the Workers group with exactly one create
+# call. Returns 0 when cmux acknowledged it (the caller waits for visibility),
+# 1 when the create was not acknowledged, and 2 when no Workers group is
+# available (the caller may use a plain create).
 fm_cmux_layout_create() {  # <scoped-label> <cwd>
-  local label=$1 cwd=$2 gw gid w wsid
+  local label=$1 cwd=$2 gw gid w
   gw=$(fm_cmux_layout_ensure)
   gid=${gw%%$'\t'*}; w=${gw#*$'\t'}
-  [ -n "$gw" ] && [ -n "$gid" ] && [ -n "$w" ] || return 1
+  [ -n "$gw" ] && [ -n "$gid" ] && [ -n "$w" ] || return 2
   fm_backend_cmux_cli new-workspace --window "$w" --group "$gid" --group-placement end \
         --name "$(fm_cmux_layout_task_title "${label#fm-"$(fm_backend_cmux_home_label)"-}")" \
         --description "$label" --cwd "$cwd" --focus false --id-format uuids >/dev/null 2>&1 || return 1
-  wsid=$(fm_backend_cmux_workspace_id_for_label "$label")
-  [ -n "$wsid" ] || return 1
-  printf '%s' "$wsid"
+  return 0
 }
 
 # State buckets for the board and tab colors, from fm-crew-state's states.
