@@ -360,10 +360,11 @@ The refusal is reached only through a close that could not do its job, and each 
 | tmux | 0, silent | 1, resolved by re-reading the window's exact recorded identity; a read that itself could not run refuses rather than passing for absence |
 | orca | 0, silent | 1 when a missing CLI means no close was attempted; 0 for a close command that failed after the CLI accepted it |
 | zellij | 0, silent | 0, not yet distinguishable |
-| cmux | 0, silent | 0, not yet distinguishable |
+| cmux | 0, silent, only on a readable every-window inventory without the task's label | 1 unless a bounded re-read shows the workspace gone from every window; one confirmation retry with the flag the CLI's help advertises |
 | herdr | 0, silent | 0 from this arm; `bin/fm-teardown.sh` gates every Herdr record removal on `fm_backend_herdr_endpoint_confirmed_gone` instead |
 
-The three arms that still report 0 need a presence re-read taken after their own close, and the close-then-read timing that re-read depends on cannot be established without the real Zellij, Orca, and cmux binaries.
+The two arms that still report 0 need a presence re-read taken after their own close, and the close-then-read timing that re-read depends on cannot be established without the real Zellij and Orca binaries.
+cmux's re-read polls every window for a bounded time (`FM_CMUX_CLOSE_WAIT_TRIES`, `FM_CMUX_CLOSE_WAIT_SLEEP`), and `tests/fm-teardown-endpoint-safety.test.sh` covers a confirmation-required close that leaves the workspace open plus the verified rerun.
 Guessing it is what a refusal must never rest on: a gate that refused an already-exited session would break ordinary cleanup on every task, which is a worse failure than the stranded endpoint it would be trying to prevent.
 tmux's re-read is deliberately exact - `=session` plus a whole-line window-name match - because a prefix match would read a neighboring window as this window's survivor, which is the same exactness the cleanup identity boundary above already requires.
 It is also deliberately conservative about the read itself, sharing `fm_backend_tmux_window_inventory` with `fm_backend_tmux_agent_state` so both mean the same thing by an absent session: only a definitive missing-session, missing-server, or connect-error response proves the window gone.

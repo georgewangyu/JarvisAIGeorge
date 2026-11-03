@@ -1366,8 +1366,80 @@ test_already_gone_endpoint_still_completes_without_a_refusal() {
   pass "fm-teardown: an already-exited endpoint, and a server that is already gone, still complete cleanup silently"
 }
 
+# write_stateful_cmux_shim <case>: a fake cmux whose one window and workspace
+# list live in <case>/cmux-workspaces.json. close-workspace removes the
+# workspace, unless <case>/cmux-close-mode holds `confirm`, in which case it
+# answers like a confirmation-required close (exit 0) and leaves it open.
+write_stateful_cmux_shim() {  # <case>
+  cat > "$1/fakebin/cmux" <<'SH'
+#!/usr/bin/env bash
+D="${FM_CMUX_CASE:?}"
+printf 'cmux' >> "${FM_RUNTIME_LOG:?}"; printf ' <%s>' "$@" >> "$FM_RUNTIME_LOG"; printf '\n' >> "$FM_RUNTIME_LOG"
+arg() { local k=$1; shift; while [ $# -gt 0 ]; do [ "$1" = "$k" ] && { printf '%s' "$2"; return; }; shift; done; }
+case "$1" in
+  ping) echo PONG ;;
+  version) echo 'cmux 0.65.2 (113) [fake]' ;;
+  list-windows) echo '[{"id":"WIN-1"}]' ;;
+  workspace) cat "$D/cmux-workspaces.json" ;;
+  list-panes)
+    ws=$(arg --workspace "$@")
+    jq -e --arg w "$ws" 'any(.workspaces[]; .id == $w)' "$D/cmux-workspaces.json" >/dev/null \
+      && printf '{"panes":[{"selected_surface_id":"SF-1","surface_ids":["SF-1"]}]}\n' || { echo 'Error: not_found'; exit 1; } ;;
+  close-workspace)
+    [ "${2:-}" = --help ] && { echo 'Usage: cmux close-workspace --workspace <id>'; exit 0; }
+    ws=$(arg --workspace "$@")
+    if [ "$(cat "$D/cmux-close-mode" 2>/dev/null)" = confirm ]; then echo '{"error":"confirmation_required"}'; exit 0; fi
+    jq --arg w "$ws" '.workspaces |= map(select(.id != $w))' "$D/cmux-workspaces.json" > "$D/ws.tmp" && mv "$D/ws.tmp" "$D/cmux-workspaces.json" ;;
+  *) : ;;
+esac
+exit 0
+SH
+  chmod +x "$1/fakebin/cmux"
+}
+
+test_cmux_teardown_keeps_the_record_until_the_workspace_is_gone() {
+  local dir id=cmux-task title rc
+  command -v jq >/dev/null 2>&1 || { echo "skip - jq not installed"; return 0; }
+  dir=$(make_case cmux-close)
+  write_stateful_cmux_shim "$dir"
+  # shellcheck disable=SC2016 # expanded in the child shell
+  title=$(FM_HOME="$dir/home" FM_ROOT="$ROOT" bash -c '. "$1/bin/backends/cmux.sh"; fm_backend_cmux_scoped_title "fm-$2"' _ "$ROOT" "$id")
+  jq -n --arg t "$title" '{workspaces:[{id:"WS-TASK",title:$t},{id:"WS-OTHER",title:"other"}]}' > "$dir/cmux-workspaces.json"
+  echo confirm > "$dir/cmux-close-mode"
+  fm_write_meta "$dir/home/state/$id.meta" \
+    "window=WS-TASK:SF-1" "endpoint_task_id=$id" "backend=cmux" \
+    "cmux_workspace_id=WS-TASK" "cmux_surface_id=SF-1" \
+    "worktree=$dir/nonexistent-worktree" "project=$dir/nonexistent-project" \
+    "kind=ship" "mode=no-mistakes"
+
+  set +e
+  FM_HOME="$dir/home" FM_ROOT_OVERRIDE="$ROOT" FM_RUNTIME_LOG="$dir/runtime.log" FM_CMUX_CASE="$dir" \
+    FM_CMUX_CLOSE_WAIT_TRIES=1 FM_CMUX_CLOSE_WAIT_SLEEP=0 PATH="$dir/fakebin:$PATH" "$TEARDOWN" "$id" \
+    > "$dir/confirm.out" 2> "$dir/confirm.err"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "teardown reported success while the cmux workspace stayed open: $(cat "$dir/confirm.out")"
+  assert_grep "is still present after its close" "$dir/confirm.err" "the surviving cmux workspace was not reported"
+  assert_present "$dir/home/state/$id.meta" "teardown removed the record naming a cmux workspace that is still open"
+  jq -e 'any(.workspaces[]; .id == "WS-TASK")' "$dir/cmux-workspaces.json" >/dev/null \
+    || fail "the fixture lost the surviving workspace, so the case proves nothing"
+
+  : > "$dir/cmux-close-mode"
+  FM_HOME="$dir/home" FM_ROOT_OVERRIDE="$ROOT" FM_RUNTIME_LOG="$dir/runtime.log" FM_CMUX_CASE="$dir" \
+    FM_CMUX_CLOSE_WAIT_TRIES=1 FM_CMUX_CLOSE_WAIT_SLEEP=0 PATH="$dir/fakebin:$PATH" "$TEARDOWN" "$id" \
+    > "$dir/rerun.out" 2> "$dir/rerun.err" \
+    || fail "the rerun with a working close still failed: $(cat "$dir/rerun.err")"
+  assert_absent "$dir/home/state/$id.meta" "a verified close left the task record behind"
+  jq -e 'any(.workspaces[]; .id == "WS-TASK") | not' "$dir/cmux-workspaces.json" >/dev/null \
+    || fail "the rerun did not close the task workspace"
+  jq -e 'any(.workspaces[]; .id == "WS-OTHER")' "$dir/cmux-workspaces.json" >/dev/null \
+    || fail "the rerun closed an unrelated workspace"
+  pass "fm-teardown: a cmux close that leaves the workspace open keeps the record; a verified close removes it"
+}
+
 test_invalid_endpoint_records_refuse_before_mutation
 test_control_lock_contention_refuses_before_mutation
+test_cmux_teardown_keeps_the_record_until_the_workspace_is_gone
 test_non_pool_teardown_ignores_task_set_lock
 test_metadata_lock_serializes_destructive_cleanup
 test_supported_backend_endpoint_records_validate

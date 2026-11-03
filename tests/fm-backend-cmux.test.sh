@@ -1079,9 +1079,13 @@ test_kill_closes_workspace_directly_when_not_last() {
   cmux_windows_response "$dir" 1 "eeeeeeee-0000-0000-0000-000000000000" 2
   # 2: workspace list --window eeeeeeee -> contains the target
   cmux_workspace_list_response "$dir" 2 "aaaaaaaa-0000-0000-0000-000000000000" "the-task" "ffffffff-0000-0000-0000-000000000000" "other"
+  # 3: close-workspace; 4-5: verification inventory without the target
+  cmux_windows_response "$dir" 4 "eeeeeeee-0000-0000-0000-eeeeeeeeeeee" 1
+  cmux_workspace_list_response "$dir" 5 "ffffffff-0000-0000-0000-ffffffffffff" "other"
   fb=$(make_cmux_fakebin "$dir")
-  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" FM_CMUX_CLOSE_WAIT_SLEEP=0 \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111"' "$ROOT"
+  expect_code 0 $? "kill should succeed once the workspace is verified absent"
   assert_contains "$(cat "$dir/log")" $'\x1f''close-workspace'$'\x1f''--workspace'$'\x1f''aaaaaaaa-0000-0000-0000-000000000000' \
     "kill did not close the task workspace"
   assert_not_contains "$(cat "$dir/log")" $'\x1f''new-workspace' \
@@ -1100,9 +1104,13 @@ test_kill_adds_sibling_when_last_in_window() {
   cmux_windows_response "$dir" 1 "eeeeeeee-0000-0000-0000-000000000000" 2
   # 2: workspace list --window eeeeeeee -> contains the target
   cmux_workspace_list_response "$dir" 2 "aaaaaaaa-0000-0000-0000-000000000000" "the-task"
+  # 3: sibling new-workspace; 4: close-workspace; 5-6: verification without the target
+  cmux_windows_response "$dir" 5 "eeeeeeee-0000-0000-0000-eeeeeeeeeeee" 1
+  cmux_workspace_list_response "$dir" 6 "ffffffff-0000-0000-0000-ffffffffffff" ""
   fb=$(make_cmux_fakebin "$dir")
-  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" FM_CMUX_CLOSE_WAIT_SLEEP=0 \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111"' "$ROOT"
+  expect_code 0 $? "kill should succeed once the last-in-window workspace is verified absent"
   assert_contains "$(cat "$dir/log")" $'\x1f''new-workspace'$'\x1f''--window'$'\x1f''eeeeeeee-0000-0000-0000-000000000000'$'\x1f''--focus'$'\x1f''false' \
     "kill did not add a throwaway sibling in the target's own window before closing the last workspace"
   assert_not_contains "$(cat "$dir/log")" $'\x1f''new-workspace'$'\x1f''--name' \
@@ -1116,22 +1124,97 @@ test_kill_adds_sibling_when_last_in_window() {
   pass "fm_backend_cmux_kill: adds a throwaway sibling then closes the target when it is the last workspace in its window"
 }
 
-test_kill_is_best_effort_when_close_workspace_fails() {
-  local dir fb
+test_kill_refuses_when_workspace_survives_the_close() {
+  local dir fb err
   dir="$TMP_ROOT/kill-workspace-fail"; mkdir -p "$dir/responses"
-  # 1: list-windows (not last), 2: workspace list --window, 3: close-workspace fails
+  # 1: list-windows (not last), 2: workspace list --window, 3: close-workspace fails,
+  # 4-5: verification still lists the target
   cmux_windows_response "$dir" 1 "eeeeeeee-0000-0000-0000-000000000000" 2
   cmux_workspace_list_response "$dir" 2 "aaaaaaaa-0000-0000-0000-000000000000" "the-task" "ffffffff-0000-0000-0000-000000000000" "other"
   printf '1\n' > "$dir/responses/3.exit"
+  cmux_windows_response "$dir" 4 "eeeeeeee-0000-0000-0000-000000000000" 2
+  cmux_workspace_list_response "$dir" 5 "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa" "the-task" "ffffffff-0000-0000-0000-ffffffffffff" "other"
+  fb=$(make_cmux_fakebin "$dir")
+  local status
+  err=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+    FM_CMUX_CLOSE_WAIT_TRIES=1 FM_CMUX_CLOSE_WAIT_SLEEP=0 \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa:bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb"' "$ROOT" 2>&1 )
+  status=$?
+  [ "$status" -ne 0 ] || fail "kill must fail when the workspace is still present after its close"
+  assert_contains "$err" "is still present after its close" "kill must name the surviving workspace"
+  pass "fm_backend_cmux_kill: refuses when the workspace survives its close"
+}
+
+test_kill_retries_a_confirmation_request_with_the_advertised_flag() {
+  local dir fb
+  dir="$TMP_ROOT/kill-confirm"; mkdir -p "$dir/responses"
+  cmux_windows_response "$dir" 1 "eeeeeeee-0000-0000-0000-eeeeeeeeeeee" 2
+  cmux_workspace_list_response "$dir" 2 "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa" "the-task" "ffffffff-0000-0000-0000-ffffffffffff" "other"
+  printf '{"error":"confirmation_required"}' > "$dir/responses/3.out"   # exit 0, still open
+  cmux_windows_response "$dir" 4 "eeeeeeee-0000-0000-0000-eeeeeeeeeeee" 2
+  cmux_workspace_list_response "$dir" 5 "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa" "the-task" "ffffffff-0000-0000-0000-ffffffffffff" "other"
+  printf 'Usage: cmux close-workspace --workspace <id> [--force]\n' > "$dir/responses/6.out"   # --help
+  # 7: close with --force; 8-9: verification without the target
+  cmux_windows_response "$dir" 8 "eeeeeeee-0000-0000-0000-eeeeeeeeeeee" 1
+  cmux_workspace_list_response "$dir" 9 "ffffffff-0000-0000-0000-ffffffffffff" "other"
   fb=$(make_cmux_fakebin "$dir")
   PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
-    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111"' "$ROOT"
-  expect_code 0 $? "kill must stay best-effort (never fail) even when close-workspace fails"
-  assert_contains "$(cat "$dir/log")" $'\x1f''close-workspace'$'\x1f''--workspace'$'\x1f''aaaaaaaa-0000-0000-0000-000000000000' \
-    "kill should still attempt close-workspace"
-  assert_not_contains "$(cat "$dir/log")" $'\x1f''close-surface' \
-    "kill should not call close-surface"
-  pass "fm_backend_cmux_kill: never fails even when close-workspace fails"
+    FM_CMUX_CLOSE_WAIT_TRIES=1 FM_CMUX_CLOSE_WAIT_SLEEP=0 \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa:bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb"' "$ROOT" \
+    || fail "a confirmed retry that removes the workspace must succeed"
+  assert_contains "$(cat "$dir/log")" $'\x1f''close-workspace'$'\x1f''--workspace'$'\x1f''aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa'$'\x1f''--force' \
+    "the retry must use the advertised flag on the same workspace"
+  [ "$(grep -c $'\x1f''close-workspace'$'\x1f''--workspace' "$dir/log")" = 2 ] || fail "exactly one retry expected"
+  pass "fm_backend_cmux_kill: a confirmation request is retried once on the owned workspace with the flag its help advertises"
+}
+
+test_kill_refuses_confirmation_without_a_supported_flag() {
+  local dir fb
+  dir="$TMP_ROOT/kill-confirm-noflag"; mkdir -p "$dir/responses"
+  cmux_windows_response "$dir" 1 "eeeeeeee-0000-0000-0000-eeeeeeeeeeee" 2
+  cmux_workspace_list_response "$dir" 2 "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa" "the-task" "ffffffff-0000-0000-0000-ffffffffffff" "other"
+  printf '{"error":"confirmation_required"}' > "$dir/responses/3.out"
+  cmux_windows_response "$dir" 4 "eeeeeeee-0000-0000-0000-eeeeeeeeeeee" 2
+  cmux_workspace_list_response "$dir" 5 "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa" "the-task" "ffffffff-0000-0000-0000-ffffffffffff" "other"
+  printf 'Usage: cmux close-workspace --workspace <id>\n' > "$dir/responses/6.out"
+  fb=$(make_cmux_fakebin "$dir")
+  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+    FM_CMUX_CLOSE_WAIT_TRIES=1 FM_CMUX_CLOSE_WAIT_SLEEP=0 \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa:bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb"' "$ROOT" 2>/dev/null \
+    && fail "a confirmation request with no supported flag must refuse"
+  [ "$(grep -c $'\x1f''close-workspace'$'\x1f''--workspace' "$dir/log")" = 1 ] || fail "no guessed retry expected"
+  pass "fm_backend_cmux_kill: refuses a confirmation request when the CLI advertises no confirmation flag"
+}
+
+test_kill_unresolved_target_needs_proven_absence() {
+  local dir fb title
+  dir="$TMP_ROOT/kill-unresolved"; mkdir -p "$dir/responses"
+  title=$(cmux_expected_scoped_title fm-gone)
+  # target_ready: 1 list (id absent), 2 list (label absent) -> unresolved;
+  # confirm_gone: 3 list-windows, 4 workspace list (label absent) -> gone.
+  printf '{"workspaces":[]}' > "$dir/responses/1.out"
+  printf '{"workspaces":[]}' > "$dir/responses/2.out"
+  cmux_windows_response "$dir" 3 "eeeeeeee-0000-0000-0000-eeeeeeeeeeee" 1
+  cmux_workspace_list_response "$dir" 4 "ffffffff-0000-0000-0000-ffffffffffff" "other"
+  fb=$(make_cmux_fakebin "$dir")
+  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa:bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" "" fm-gone' "$ROOT" \
+    || fail "a provably absent workspace is an already-closed endpoint"
+  assert_not_contains "$(cat "$dir/log")" $'\x1f''close-workspace' "an absent workspace must not be closed"
+  rm -rf "$dir/responses"; mkdir -p "$dir/responses"; : > "$dir/log"
+  printf '{"workspaces":[]}' > "$dir/responses/1.out"
+  printf '{"workspaces":[]}' > "$dir/responses/2.out"
+  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" FM_CMUX_FAKE_PING=down FM_CMUX_FAKE_PING_EXIT=1 \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa:bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" "" fm-gone' "$ROOT" 2>/dev/null \
+    && fail "an unreachable app must never read as a closed workspace"
+  rm -rf "$dir/responses"; mkdir -p "$dir/responses"
+  printf '{"workspaces":[]}' > "$dir/responses/1.out"
+  printf '{"workspaces":[]}' > "$dir/responses/2.out"
+  printf 'not json' > "$dir/responses/3.out"
+  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa:bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" "" fm-gone' "$ROOT" 2>/dev/null \
+    && fail "a malformed inventory must never read as a closed workspace"
+  pass "fm_backend_cmux_kill: an unresolved target is closed only on a readable inventory without its label"
 }
 
 test_kill_recovers_stale_target_by_label() {
@@ -1144,10 +1227,13 @@ test_kill_recovers_stale_target_by_label() {
   cmux_workspace_list_response "$dir" 2 "cccccccc-2222-2222-2222-222222222222" "$title"
   cmux_panes_response "$dir" 3 "dddddddd-3333-3333-3333-333333333333"
   # window_of_workspace on the REFRESHED id: 4 list-windows (not last), 5 workspace list --window.
-  cmux_windows_response "$dir" 4 "eeeeeeee-0000-0000-0000-000000000000" 2
+  cmux_windows_response "$dir" 4 "eeeeeeee-0000-0000-0000-eeeeeeeeeeee" 2
   cmux_workspace_list_response "$dir" 5 "cccccccc-2222-2222-2222-222222222222" "$title" "ffffffff-0000-0000-0000-000000000000" "other"
+  # 6: close-workspace; 7-8: verification without the refreshed id
+  cmux_windows_response "$dir" 7 "eeeeeeee-0000-0000-0000-eeeeeeeeeeee" 1
+  cmux_workspace_list_response "$dir" 8 "ffffffff-0000-0000-0000-ffffffffffff" "other"
   fb=$(make_cmux_fakebin "$dir")
-  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" FM_CMUX_CLOSE_WAIT_SLEEP=0 \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111" "" fm-label' "$ROOT"
   expect_code 0 $? "kill should recover a stale cmux target when the expected label is live"
   assert_contains "$(cat "$dir/log")" $'\x1f''close-workspace'$'\x1f''--workspace'$'\x1f''cccccccc-2222-2222-2222-222222222222' \
@@ -1261,7 +1347,10 @@ test_window_of_workspace_finds_window_and_count
 test_window_of_workspace_empty_when_not_found
 test_kill_closes_workspace_directly_when_not_last
 test_kill_adds_sibling_when_last_in_window
-test_kill_is_best_effort_when_close_workspace_fails
+test_kill_refuses_when_workspace_survives_the_close
+test_kill_retries_a_confirmation_request_with_the_advertised_flag
+test_kill_refuses_confirmation_without_a_supported_flag
+test_kill_unresolved_target_needs_proven_absence
 test_kill_recovers_stale_target_by_label
 test_list_live_filters_by_title_prefix
 test_secondmate_spawn_refuses_cmux_backend

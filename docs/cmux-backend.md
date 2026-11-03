@@ -103,6 +103,11 @@ An unstructured bare prompt is `unknown`, and a slash-popup placeholder remains 
 cmux exposes no native generic agent busy signal, so supervision uses capture/hash polling for screen changes and each harness adapter's semantic lifecycle for worker state.
 Grok alone retains its isolated rendered-tail fallback.
 
+Cleanup succeeds only when the task workspace is confirmed absent from every window afterwards.
+A close response alone is not proof: cmux can answer with a confirmation request, with or without a nonzero exit, and leave the workspace open.
+A confirmation request is retried once on that exact workspace with the confirmation flag the installed CLI's help advertises; with none, or when the workspace is still listed, cleanup refuses and keeps the task record.
+An unreachable app or an unreadable inventory is never read as a closed workspace.
+
 A task workspace's last surface cannot be closed directly.
 Cleanup owns the whole workspace and uses `close-workspace`.
 cmux also refuses to remove the only workspace in a macOS window while returning a misleading success response.

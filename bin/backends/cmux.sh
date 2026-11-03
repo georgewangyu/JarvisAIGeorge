@@ -675,26 +675,32 @@ fm_backend_cmux_window_of_workspace() {  # <workspace_id> -> "<window_id> <count
   done < <(printf '%s' "$wins" | jq -r '.[]? | .id' 2>/dev/null)
 }
 
-# fm_backend_cmux_kill: remove the task's whole workspace, best-effort (mirrors
-# every other backend's `kill` `|| true` contract). A cmux task owns one
-# workspace, so teardown reclaims that workspace and all of its surfaces.
+# fm_backend_cmux_kill: close the task's whole workspace and PROVE it closed.
+# bin/fm-backend.sh's fm_backend_kill contract: 0 only when the workspace is
+# confirmed absent from every window (already gone counts), nonzero otherwise,
+# so bin/fm-teardown.sh keeps the task record that is the only thing naming a
+# workspace that survived (issue #3). A close response alone is not proof:
+# cmux can answer a close with a confirmation request, with or without a
+# nonzero exit, and leave the workspace open.
 #
 # The selected-workspace teardown bug (docs/cmux-backend.md "Closing the last
 # workspace in a window"): cmux keeps every window at >=1 workspace, so
-# `close-workspace` on the ONLY workspace in its window silently no-ops - it
-# still returns `OK`, but the workspace stays, which is exactly what left a
-# selected task workspace open at teardown (the last workspace in a window is
-# always the selected one). `close-window`/`window.close` cannot rescue it
-# either: a window holding a live terminal session cannot be closed over the
-# control socket (verified: returns success-shaped output, closes nothing).
-# The reliable primitive is close-workspace on a NON-last workspace, so when the
-# target is the last one in its window a throwaway sibling is created first,
-# leaving that window a fresh default workspace (never an fm-<home>- title, so
-# recovery/list_live ignore it) - cmux's own "closed the last tab" outcome.
+# `close-workspace` on the ONLY workspace in its window silently no-ops. When
+# the target is the last one in its window a throwaway unnamed sibling is
+# created first, leaving that window a fresh default workspace (never an
+# fm-<home>- title, so recovery/list_live ignore it).
+#
+# A confirmation request is retried once, on this exact workspace only, with
+# the confirmation flag the installed CLI advertises in its own help (none is
+# guessed); without one the close is refused. An unreachable app or an
+# unreadable inventory is never read as absence.
 fm_backend_cmux_kill() {  # <target> [unused] [expected-label]
-  local expected_label=${3:-} wsid wininfo win count
+  local expected_label=${3:-} wsid wininfo win count out flag
   if [ -n "$expected_label" ]; then
-    fm_backend_cmux_target_ready "$1" "$expected_label" || return 0
+    if ! fm_backend_cmux_target_ready "$1" "$expected_label"; then
+      fm_backend_cmux_confirm_gone "$1" "$expected_label"
+      return $?
+    fi
   else
     fm_backend_cmux_parse_target "$1" || return 0
   fi
@@ -705,7 +711,57 @@ fm_backend_cmux_kill() {  # <target> [unused] [expected-label]
   if [ -n "$win" ] && [ "$count" = 1 ]; then
     fm_backend_cmux_cli new-workspace --window "$win" --focus false --id-format uuids >/dev/null 2>&1 || true
   fi
-  fm_backend_cmux_cli close-workspace --workspace "$wsid" >/dev/null 2>&1 || true
+  out=$(fm_backend_cmux_cli close-workspace --workspace "$wsid" 2>&1)
+  fm_backend_cmux_await_closed "$wsid" && return 0
+  case "$out" in
+    *confirm*|*Confirm*)
+      flag=$(fm_backend_cmux_close_confirm_flag)
+      if [ -n "$flag" ]; then
+        out=$(fm_backend_cmux_cli close-workspace --workspace "$wsid" "$flag" 2>&1)
+        fm_backend_cmux_await_closed "$wsid" && return 0
+      fi
+      ;;
+  esac
+  echo "error: cmux task workspace $wsid is still present after its close${out:+ ($out)}" >&2
+  return 1
+}
+
+# The confirmation flag the installed CLI's own close help advertises, if any.
+fm_backend_cmux_close_confirm_flag() {
+  fm_backend_cmux_cli close-workspace --help 2>&1 \
+    | grep -oE -- '--(yes|force|confirm|no-confirm)([^A-Za-z-]|$)' | head -1 | grep -oE -- '--[a-z-]+'
+}
+
+# 0 once <workspace-id> is absent from a readable every-window inventory.
+# FM_CMUX_CLOSE_WAIT_TRIES (20) x FM_CMUX_CLOSE_WAIT_SLEEP (0.25s).
+fm_backend_cmux_await_closed() {  # <workspace-id>
+  local i=0 tries=${FM_CMUX_CLOSE_WAIT_TRIES:-20} nap=${FM_CMUX_CLOSE_WAIT_SLEEP:-0.25} all
+  while [ "$i" -lt "$tries" ]; do
+    if all=$(fm_backend_cmux_all_workspaces_json) \
+       && printf '%s' "$all" | jq -e --arg w "$1" 'has("workspaces") and (any(.workspaces[]?; .id == $w) | not)' >/dev/null 2>&1; then
+      return 0
+    fi
+    i=$((i + 1))
+    [ "$i" -lt "$tries" ] && sleep "$nap"
+  done
+  return 1
+}
+
+# The target did not resolve: 0 only when cmux answers and no workspace in any
+# window carries the task's scoped label. A recorded id now held by another
+# workspace (identity mismatch) is not ours and is left alone.
+fm_backend_cmux_confirm_gone() {  # <target> <expected-label>
+  local want all
+  fm_backend_cmux_parse_target "$1" || return 1
+  [ "$(fm_backend_cmux_ping_state)" = ok ] || { echo "error: cmux is not reachable, so the task workspace cannot be proven closed" >&2; return 1; }
+  all=$(fm_backend_cmux_all_workspaces_json) || { echo "error: cmux workspace inventory is unreadable, so the task workspace cannot be proven closed" >&2; return 1; }
+  want=$(fm_backend_cmux_scoped_title "$2")
+  if printf '%s' "$all" | jq -e --arg l "$want" \
+       'any(.workspaces[]?; .title == $l or .description == $l)' >/dev/null 2>&1; then
+    echo "error: cmux task workspace for $2 is present but could not be resolved for a verified close" >&2
+    return 1
+  fi
+  return 0
 }
 
 # fm_backend_cmux_list_live: recovery/orphan discovery. Lists every workspace

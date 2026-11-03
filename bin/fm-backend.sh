@@ -805,7 +805,8 @@ fm_backend_send_text_submit() {  # <backend> <target> <text> <retries> <enter-sl
 # naming the endpoint (bin/fm-teardown.sh's retain-and-stop path).
 # How much each adapter can prove differs, and no arm ever guesses: tmux
 # resolves a failed close against the window's exact recorded identity, Orca
-# reports a close its missing CLI never attempted, and the remaining arms
+# reports a close its missing CLI never attempted, cmux confirms the workspace
+# is absent from every window before reporting 0, and the remaining arms
 # still report 0 for a close command that failed after being accepted.
 # docs/verification/runtime-backends.md "Endpoint close" is the per-backend
 # record.
