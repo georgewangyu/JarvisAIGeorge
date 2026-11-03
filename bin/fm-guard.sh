@@ -202,6 +202,10 @@ fi
 # No fresh watcher with tasks in flight is the dangerous state: emit a prominent,
 # bordered banner FIRST so it reads as an alarm, not a buried stderr line. Later
 # calls in the same episode get a one-line reminder only.
+if [ "$watcher_healthy" = true ] && [ -n "${FM_WATCHER_VERDICT_HANDOFF:-}" ]; then
+  printf 'note: supervision hand-off - the last foreground checkpoint returned %ss ago; start the next checkpoint once this wake is handled.\n' \
+    "$FM_WATCHER_VERDICT_HANDOFF" >&2
+fi
 if [ "$watcher_healthy" = false ]; then
   episode_key=$(fm_guard_stale_episode_key "$watcher_down_reason")
   episode_key=${episode_key%$'\n'}

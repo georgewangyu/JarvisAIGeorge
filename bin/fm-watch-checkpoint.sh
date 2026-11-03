@@ -13,6 +13,9 @@ Usage: fm-watch-checkpoint.sh [--seconds <n>]
 Run bin/fm-watch.sh in the foreground for a bounded checkpoint.
 On an actionable watcher wake, pass through the watcher output and exit 0.
 On a quiet checkpoint, print "checkpoint: no actionable wake within <n>s" and exit 124.
+Both normal returns refresh state/.watch-checkpoint-return, which tells the
+watcher-liveness guard that the gap before the next checkpoint is the expected
+manager hand-off; any other outcome removes it.
 EOF
 }
 
@@ -93,6 +96,16 @@ else
 fi
 set -e
 
+# The manager-side hand-off record the checkpoint supervision model in
+# bin/fm-wake-lib.sh reads: refreshed on every NORMAL return (an actionable
+# wake or a quiet checkpoint), removed on any other outcome so a failed cycle
+# alarms at once.
+HANDOFF="${FM_STATE_OVERRIDE:-${FM_HOME:-$(cd "$SCRIPT_DIR/.." && pwd)}/state}/.watch-checkpoint-return"
+if grep -E '^(signal:|stale:|check:|heartbeat($|:))' "$OUT" >/dev/null 2>&1 || [ "$RC" -eq 124 ]; then
+  touch "$HANDOFF" 2>/dev/null || true
+else
+  rm -f "$HANDOFF" 2>/dev/null || true
+fi
 if grep -E '^(signal:|stale:|check:|heartbeat($|:))' "$OUT" >/dev/null 2>&1; then
   cat "$OUT"
   [ ! -s "$ERR" ] || cat "$ERR" >&2

@@ -12,5 +12,8 @@ When this session owns supervision and away mode is not active:
    If it is ever shelled anyway, a backgrounded, piped, or bundled anti-pattern is denied automatically by the PreToolUse seatbelt (`bin/fm-arm-pretool-check.sh`) registered in `.codex/hooks.json`.
 8. Failure or missing cycle only: drain queued wakes, inspect the failure, then start a fresh foreground checkpoint.
 
+Between checkpoints no watcher runs by design.
+While the last checkpoint returned normally within the guard grace, guarded commands print a one-line `note: supervision hand-off` instead of an alarm; a full `WATCHER DOWN` banner means the hand-off expired or the last checkpoint failed, so start a checkpoint now.
+
 Codex cannot reason while a foreground tool call is running.
 The bounded checkpoint returns control regularly so user messages and queued wakes can be handled without relying on background-task wake semantics.

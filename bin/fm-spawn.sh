@@ -4582,6 +4582,7 @@ if [ "$KIND" = secondmate ]; then
   case "$HARNESS" in
   claude | cursor) supervision_model=autoarm ;;
   pi | pi-signed | omp) supervision_model=extension ;;
+  codex) supervision_model=checkpoint ;;
   *) supervision_model=persistent ;;
   esac
   # Deliver the primary's EFFECTIVE trace-context decision as a normalized on/off

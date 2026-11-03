@@ -205,12 +205,13 @@ fm_watcher_healthy() {
 fm_supervision_model() {
   local harness
   case "${FM_SUPERVISION_MODEL:-}" in
-    autoarm|extension|persistent) printf '%s\n' "$FM_SUPERVISION_MODEL"; return 0 ;;
+    autoarm|extension|persistent|checkpoint) printf '%s\n' "$FM_SUPERVISION_MODEL"; return 0 ;;
   esac
   harness=$("$FM_WAKE_LIB_DIR/fm-harness.sh" 2>/dev/null || printf unknown)
   case "$harness" in
     claude|cursor) printf 'autoarm\n' ;;
     pi|pi-signed|omp) printf 'extension\n' ;;
+    codex) printf 'checkpoint\n' ;;
     *) printf 'persistent\n' ;;
   esac
 }
@@ -376,16 +377,35 @@ fm_afk_mode() {
 # extension never restores still alarms once the beacon passes grace.
 # persistent: require a live identity-matched watcher with a fresh beacon
 # (fm_watcher_healthy); a fresh leftover beacon with no live watcher is still down.
+# checkpoint (the Codex foreground-checkpoint protocol): the watcher runs only
+# inside a bounded foreground checkpoint call, which returns control so the
+# manager can handle the wake. A live watcher is healthy as usual. With no
+# watcher, the gap is the expected hand-off only while the beacon is fresh AND
+# the last checkpoint returned normally within FM_CHECKPOINT_HANDOFF_GRACE
+# seconds (default: the guard grace); the guard reports it as a one-line
+# hand-off note (FM_WATCHER_VERDICT_HANDOFF=<age>). A checkpoint that returned
+# abnormally, or a hand-off older than that bound, is a real outage and alarms.
 # shellcheck disable=SC2034 # Read by callers after the function returns.
 FM_WATCHER_VERDICT_OK=false
 # shellcheck disable=SC2034 # Read by callers after the function returns.
 FM_WATCHER_VERDICT_REASON=stale-beacon
+# shellcheck disable=SC2034 # Read by callers after the function returns.
+FM_WATCHER_VERDICT_HANDOFF=
+# fm_checkpoint_handoff_age <state>: seconds since the last normal checkpoint
+# return (state/.watch-checkpoint-return), or empty when there is none.
+fm_checkpoint_handoff_age() {
+  local age
+  age=$(fm_path_age "$1/.watch-checkpoint-return")
+  case "$age" in ''|*[!0-9]*) return 0 ;; esac
+  printf '%s' "$age"
+}
 fm_watcher_supervision_verdict() {
   local state=$1 watch=$2 grace=${3:-${FM_GUARD_GRACE:-300}} home=${4:-$FM_HOME}
   local root=${5:-$FM_ROOT}
   local beat age fresh=false model
   FM_WATCHER_VERDICT_OK=false
   FM_WATCHER_VERDICT_REASON=stale-beacon
+  FM_WATCHER_VERDICT_HANDOFF=
   beat="$state/.last-watcher-beat"
   age=$(fm_path_age "$beat")
   case "$age" in
@@ -403,10 +423,18 @@ fm_watcher_supervision_verdict() {
     # shellcheck disable=SC2034 # Read by callers after the function returns.
     FM_WATCHER_VERDICT_OK=true
   elif [ "$fresh" = true ]; then
+    local handoff
+    handoff=$(fm_checkpoint_handoff_age "$state")
     if [ "$model" = extension ] && fm_watcher_lock_unheld "$state" \
       && fm_extension_owns_supervision "$state" "$root"; then
       # shellcheck disable=SC2034 # Read by callers after the function returns.
       FM_WATCHER_VERDICT_OK=true
+    elif [ "$model" = checkpoint ] && [ -n "$handoff" ] \
+      && [ "$handoff" -lt "${FM_CHECKPOINT_HANDOFF_GRACE:-$grace}" ] && fm_watcher_lock_unheld "$state"; then
+      # shellcheck disable=SC2034 # Read by callers after the function returns.
+      FM_WATCHER_VERDICT_OK=true
+      # shellcheck disable=SC2034 # Read by callers after the function returns.
+      FM_WATCHER_VERDICT_HANDOFF=$handoff
     else
       # shellcheck disable=SC2034 # Read by callers after the function returns.
       FM_WATCHER_VERDICT_REASON=no-watcher
