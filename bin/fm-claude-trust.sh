@@ -10,10 +10,15 @@
 #
 # Usage: fm-claude-trust.sh <worktree> <project>
 #        fm-claude-trust.sh --secondmate-home <home> <id>
+#        fm-claude-trust.sh --shared-checkout <checkout> <projects-root>
 #   <worktree>  the isolated task worktree this spawn launches into
 #   <project>   the primary checkout that worktree belongs to
 #   <home>      the seeded secondmate home this spawn launches into
 #   <id>        the secondmate id that home must already be marked for
+#   <checkout>  shared-checkout mode (this fork's default workspace isolation):
+#               the project's own primary checkout the worker starts in
+#   <projects-root> this home's projects directory, which must be the
+#               checkout's parent
 # Prints one line naming what it registered; refuses loudly on anything else.
 #
 # WHY THIS EXISTS. Claude Code gates a folder it has never seen behind an
@@ -117,6 +122,18 @@
 # opt-in guard family (FM_*_LIVE_E2E=1) and record the result in
 # docs/verification/runtime-backends.md, rather than assuming the shape here.
 #
+# SHARED-CHECKOUT MODE. This fork starts ship and scout workers in the
+# project's existing checkout instead of an isolated worktree
+# (bin/fm-workspace-lib.sh), so that checkout is the folder Claude Code gates.
+# The worktree test cannot decide it (it is a primary checkout by design), so
+# the evidence is the project's place in this home: the argument must be a
+# primary checkout (its git dir equals its common dir) whose top level is
+# exactly the argument, and whose parent directory is exactly <projects-root>,
+# this home's projects directory, where project-management clones every
+# project. A checkout anywhere else, a subdirectory, a linked worktree, and a
+# plain directory are refused. Only the trust flag is written, on that single
+# entry; the external-imports consent is never carried or manufactured.
+#
 # SECONDMATE-HOME MODE. A secondmate home is a whole firstmate instance rather
 # than a task worktree, and bin/fm-home-seed.sh produces it in two shapes: a
 # leased treehouse worktree (linked) and a standalone clone of the firstmate
@@ -174,6 +191,7 @@ unset CDPATH \
 usage() {
   echo "usage: fm-claude-trust.sh <worktree> <project>" >&2
   echo "       fm-claude-trust.sh --secondmate-home <home> <id>" >&2
+  echo "       fm-claude-trust.sh --shared-checkout <checkout> <projects-root>" >&2
   exit 2
 }
 
@@ -181,6 +199,14 @@ usage() {
 # names what the argument was expected to be so every shared refusal below reads
 # correctly in both modes.
 case "${1:-}" in
+  --shared-checkout)
+    [ "$#" -eq 3 ] || usage
+    MODE=shared-checkout
+    TARGET_ARG=$2
+    SUB_ID=
+    PROJ_ARG=$3
+    SCOPE_NOUN="shared project checkout"
+    ;;
   --secondmate-home)
     [ "$#" -eq 3 ] || usage
     MODE=secondmate-home
@@ -303,6 +329,20 @@ if [ "$MODE" = worktree ]; then
     [ -n "$CANON_GIT_DIR" ] && [ "$CANON_GIT_DIR" = "$PROJ_COMMON" ] \
       || refuse "project '$PROJ_REAL' is a linked worktree whose primary checkout could not be resolved"
   fi
+elif [ "$MODE" = shared-checkout ]; then
+  ROOTS_REAL=$(real_dir "$PROJ_ARG") || true
+  [ -n "$ROOTS_REAL" ] || refuse "projects root '$PROJ_ARG' is not an accessible directory"
+  SC_TOP=$(git -C "$TARGET_REAL" rev-parse --show-toplevel 2>/dev/null) || true
+  [ -n "$SC_TOP" ] || refuse "'$TARGET_REAL' is not inside a git repository"
+  SC_TOP_REAL=$(real_dir "$SC_TOP") || true
+  [ "$SC_TOP_REAL" = "$TARGET_REAL" ] || refuse "'$TARGET_REAL' is not a checkout root (its root is '${SC_TOP_REAL:-unresolvable}')"
+  SC_GIT_DIR=$(git -C "$TARGET_REAL" rev-parse --absolute-git-dir 2>/dev/null) || true
+  SC_GIT_DIR=$(real_dir "${SC_GIT_DIR:-}") || true
+  SC_COMMON=$(common_dir_of "$TARGET_REAL") || true
+  [ -n "$SC_GIT_DIR" ] && [ -n "$SC_COMMON" ] || refuse "'$TARGET_REAL' has no resolvable git directory"
+  [ "$SC_GIT_DIR" = "$SC_COMMON" ] || refuse "'$TARGET_REAL' is a linked worktree, not a project's own checkout"
+  SC_PARENT=$(real_dir "$(dirname -- "$TARGET_REAL")") || true
+  [ "$SC_PARENT" = "$ROOTS_REAL" ] || refuse "'$TARGET_REAL' is not a project directly under this home's projects directory '$ROOTS_REAL'"
 else
   # The seed evidence, in the order that names the most useful reason first: the
   # marker decides whether this is a secondmate home at all, the id decides

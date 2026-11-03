@@ -28,6 +28,8 @@ make_spawn_case() {
   local name=$1 mode=${2:-}
   local home="$TMP_ROOT/$name/home" proj="$TMP_ROOT/$name/project" fakebin
   fm_test_spawn_home "$home"
+  rm -f "$home/config/workspace-isolation"
+  rm -f "$home/config/workspace-isolation"
   make_project_repo "$proj"
   proj=$(cd "$proj" && pwd -P)
   if [ -n "$mode" ] && [ "$mode" != bogus ]; then
@@ -89,6 +91,54 @@ test_shared_spawn_uses_project_without_treehouse_or_branch() {
   pass 'shared-checkout spawn uses the canonical checkout and does not invoke worktree or branch setup'
 }
 
+# A shared-checkout claude worker starts in the project's own checkout, which
+# Claude gates behind its trust dialog like any unseen folder; the spawn must
+# pre-register it (bin/fm-claude-trust.sh --shared-checkout), and only for a
+# project directly under this home's projects directory.
+claude_shared_case() {  # <name> <project-under-projects:yes|no>
+  local name=$1 under=$2 home proj fakebin
+  home="$TMP_ROOT/$name/home"
+  fm_test_spawn_home "$home"
+  rm -f "$home/config/workspace-isolation"
+  if [ "$under" = yes ]; then proj="$home/projects/app"; else proj="$TMP_ROOT/$name/elsewhere/app"; fi
+  make_project_repo "$proj"
+  proj=$(cd "$proj" && pwd -P)
+  FM_HOME="$home" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" \
+    "$ROOT/bin/fm-brief.sh" task-c app --mode direct-PR >/dev/null
+  python3 - "$home/data/task-c/brief.md" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+p.write_text(p.read_text().replace('{TASK}', 'Change the fixture.').replace('{FIRSTMATE_SPEC}', 'Exercise the spawn behavior under test.'))
+PY
+  fakebin=$(make_spawn_fakebin "$TMP_ROOT/$name" claude gh gh-axi no-mistakes)
+  printf '%s\t%s\t%s\n' "$home" "$proj" "$fakebin"
+}
+
+test_shared_claude_spawn_trusts_its_checkout() {
+  local rec home proj fakebin out store
+  rec=$(claude_shared_case shared-claude yes)
+  IFS=$'\t' read -r home proj fakebin <<< "$rec"
+  out=$(FM_FAKE_LAUNCH_LOG="$TMP_ROOT/shared-claude/launch.log" FM_FAKE_PANE_LOG="$TMP_ROOT/shared-claude/pane.log" \
+    fm_test_run_spawn "$home" "$proj" "$fakebin" task-c "$proj" claude --mode direct-PR --yolo off) \
+    || fail "shared claude spawn failed: $out"
+  store="$home/user-home/.claude.json"
+  python3 - "$store" "$proj" <<'PY' || fail "shared claude spawn did not pre-register trust for its checkout"
+import json, sys
+entry = json.load(open(sys.argv[1]))["projects"].get(sys.argv[2], {})
+assert entry.get("hasTrustDialogAccepted") is True, entry
+assert "hasClaudeMdExternalIncludesApproved" not in entry, "import consent must not be manufactured"
+PY
+  rec=$(claude_shared_case shared-claude-out no)
+  IFS=$'\t' read -r home proj fakebin <<< "$rec"
+  if out=$(FM_FAKE_LAUNCH_LOG="$TMP_ROOT/shared-claude-out/launch.log" FM_FAKE_PANE_LOG="$TMP_ROOT/shared-claude-out/pane.log" \
+    fm_test_run_spawn "$home" "$proj" "$fakebin" task-c "$proj" claude --mode direct-PR --yolo off); then
+    fail "a shared claude spawn of a checkout outside projects/ must be refused: $out"
+  fi
+  assert_contains "$out" 'workspace trust' 'the refusal must name workspace trust'
+  pass 'shared-checkout claude spawn trusts its own checkout under projects/ and refuses one outside it'
+}
+
 test_explicit_worktree_spawn_preserves_legacy_treehouse_path() {
   local rec home proj fakebin clone out log pane_log meta
   rec=$(make_spawn_case explicit-worktree worktree)
@@ -121,6 +171,8 @@ test_invalid_setting_refuses_spawn_before_metadata() {
 test_shared_teardown_does_not_delete_or_reset_checkout() {
   local home="$TMP_ROOT/teardown/home" proj="$TMP_ROOT/teardown/project" fakebin log out meta
   fm_test_spawn_home "$home"
+  rm -f "$home/config/workspace-isolation"
+  rm -f "$home/config/workspace-isolation"
   make_project_repo "$proj"
   mkdir -p "$home/state" "$home/data"
   meta="$home/state/task-a.meta"
@@ -170,3 +222,4 @@ test_shared_spawn_uses_project_without_treehouse_or_branch
 test_explicit_worktree_spawn_preserves_legacy_treehouse_path
 test_invalid_setting_refuses_spawn_before_metadata
 test_shared_teardown_does_not_delete_or_reset_checkout
+test_shared_claude_spawn_trusts_its_checkout

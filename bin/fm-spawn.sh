@@ -3819,19 +3819,23 @@ fi
 AGY_TRUST_PREREGISTERED=0
 case "$HARNESS" in
 claude*)
-  if [ "$KIND" != secondmate ] && [ "$WORKSPACE_ISOLATION_MODE" = shared-checkout ]; then
-    :
+  # Shared-checkout mode (this fork's default) starts the worker in the
+  # project's own checkout, which Claude gates the same way, so it is trusted
+  # too: bin/fm-claude-trust.sh --shared-checkout accepts only a primary
+  # checkout directly under this home's projects directory.
+  if [ "$KIND" = secondmate ]; then
+    spawn_trust_args=(--secondmate-home "$PROJ_ABS" "$ID")
+  elif [ "$WORKSPACE_ISOLATION_MODE" = shared-checkout ]; then
+    spawn_trust_args=(--shared-checkout "$WT" "$PROJECTS")
   else
-    if [ "$KIND" = secondmate ]; then
-      spawn_trust_args=(--secondmate-home "$PROJ_ABS" "$ID")
-    else
-      spawn_trust_args=("$WT" "$PROJ_ABS")
-    fi
+    spawn_trust_args=("$WT" "$PROJ_ABS")
+  fi
+  {
     if ! "$FM_ROOT/bin/fm-claude-trust.sh" "${spawn_trust_args[@]}" >/dev/null; then
       echo "error: could not pre-register Claude workspace trust for $WT; refusing to launch a claude worker that would wedge on the trust dialog; inspect window $T" >&2
       exit 1
     fi
-  fi
+  }
   ;;
 agy)
   if [ "$KIND" != secondmate ] && [ "$WORKSPACE_ISOLATION_MODE" != shared-checkout ]; then
