@@ -159,16 +159,17 @@ fm_cmux_layout_unlock() { rmdir "$FM_HOME/state/.cmux-layout.lock" 2>/dev/null |
 
 # Start the read-only board in a group's generated header workspace.
 fm_cmux_layout_start_board() {  # <anchor-ref>
-  local ref=$1 sf i=0 board="$FM_BACKEND_CMUX_ROOT/bin/fm-cmux-board.sh"
+  local ref=$1 endpoint ws sf i=0 board="$FM_BACKEND_CMUX_ROOT/bin/fm-cmux-board.sh"
   [ -f "$board" ] || return 0
   while [ "$i" -lt 20 ]; do
-    sf=$(fm_backend_cmux_surface_id_for_workspace "$ref"); [ -n "$sf" ] && break
+    endpoint=$(fm_backend_cmux_workspace_surface_for_identity "$ref"); [ -n "$endpoint" ] && break
     i=$((i + 1)); sleep 0.25
   done
-  [ -n "$sf" ] || return 0
-  fm_backend_cmux_cli send --workspace "$ref" --surface "$sf" \
+  [ -n "$endpoint" ] || return 0
+  ws=${endpoint%%$'\t'*}; sf=${endpoint#*$'\t'}
+  fm_backend_cmux_cli send --workspace "$ws" --surface "$sf" \
     "FM_HOME=$(printf %q "$FM_HOME") bash $(printf %q "$board")" >/dev/null 2>&1 || return 0
-  fm_backend_cmux_cli send-key --workspace "$ref" --surface "$sf" Enter >/dev/null 2>&1 || true
+  fm_backend_cmux_cli send-key --workspace "$ws" --surface "$sf" Enter >/dev/null 2>&1 || true
 }
 
 # Name, pin, and color the manager tab, and keep it right before its Workers

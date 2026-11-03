@@ -379,10 +379,11 @@ if fm_cmux_layout_enabled; then
     anchor=""
     [ -n "$gw" ] && anchor=$(fm_cmux_layout_groups "$w" | jq -r --arg g "$gid" '.groups[]? | select(.ref == $g) | .anchor_workspace_ref // empty' 2>/dev/null)
     if [ -n "$anchor" ]; then
-      asf=$(fm_backend_cmux_surface_id_for_workspace "$anchor")
-      aid=$(printf '%s' "$ALL" | jq -r --arg r "$anchor" 'first(.workspaces[]? | select(.ref == $r or .id == $r) | .id) // empty' 2>/dev/null)
-      [ -n "$aid" ] || aid=$anchor
-      if [ -n "$asf" ] && [ "$(fm_backend_cmux_agent_state "$aid:$asf")" = dead ] \
+      anchor_endpoint=$(fm_backend_cmux_workspace_surface_for_identity "$anchor")
+      if [ -n "$anchor_endpoint" ]; then
+        aid=${anchor_endpoint%%$'\t'*}; asf=${anchor_endpoint#*$'\t'}
+      fi
+      if [ -n "$anchor_endpoint" ] && [ "$(fm_backend_cmux_agent_state "$aid:$asf")" = dead ] \
          && ! fm_backend_cmux_surface_procs "$aid" "$asf" | cut -f1 | while read -r p; do ps -p "$p" -o args= 2>/dev/null; done | grep -q 'fm-cmux-board.sh'; then
         act "restart the Workers board" fm_cmux_layout_start_board "$anchor" && info "restarted the Workers board"
       fi

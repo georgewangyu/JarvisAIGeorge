@@ -117,7 +117,10 @@ printf '%s\n' "$*" >> "$D/log"
 case "$1" in
   rpc)
     [ "${2:-}" = system.tree ] || exit 1
-    echo '{"windows":[{"id":"WIN","workspace_count":1,"workspaces":[{"id":"MGR","title":"JarvisAIGeorge","description":null,"panes":[{"id":"pane-MGR","surface_count":1,"surface_ids":["surface-MGR"],"surfaces":[{"id":"surface-MGR"}]}]}]}]}' ;;
+    tree='{"windows":[{"id":"WIN","workspace_count":2,"workspaces":[{"id":"MGR","title":"JarvisAIGeorge","description":null,"panes":[{"id":"pane-MGR","surface_count":1,"surface_ids":["surface-MGR"],"surfaces":[{"id":"surface-MGR"}]}]},{"id":"ANCHOR_UUID","ref":"workspace:2","title":"Workers header","description":null,"panes":[{"id":"pane-ANCHOR","surface_count":1,"surface_ids":["ANCHOR_SF"],"surfaces":[{"id":"ANCHOR_SF"}]}]}]}]}'
+    if [ "${FAKE_DUP_REF:-0}" = 1 ]; then
+      printf '%s' "$tree" | jq '.windows[0].workspaces += [.windows[0].workspaces[1] | .id="OTHER_UUID" | .panes[0].id="pane-OTHER" | .panes[0].surface_ids=["OTHER_SF"] | .panes[0].surfaces=[{"id":"OTHER_SF"}]] | .windows[0].workspace_count=3'
+    else printf '%s\n' "$tree"; fi ;;
   list-windows) echo '[{"id":"WIN"}]' ;;
   workspace) echo '{"workspaces":[{"id":"MGR","title":"JarvisAIGeorge"}]}' ;;
   workspace-group)
@@ -129,6 +132,21 @@ case "$1" in
 esac
 SH
   chmod +x "$d/bin/cmux"
+}
+
+test_start_board_resolves_anchor_ref() {
+  local d="$TMP_ROOT/start-board" h="$TMP_ROOT/start-board/home"
+  mkdir -p "$h/state" "$h/config"
+  make_group_fake "$d"
+  PATH="$d/bin:$PATH" FAKE_DIR="$d" FM_HOME="$h" FM_ROOT="$ROOT" \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_cmux_layout_start_board workspace:2' "$ROOT"
+  grep -q '^send --workspace ANCHOR_UUID --surface ANCHOR_SF ' "$d/log" || fail "board start did not resolve anchor ref to UUID/surface: $(cat "$d/log")"
+  grep -q '^send-key --workspace ANCHOR_UUID --surface ANCHOR_SF Enter$' "$d/log" || fail 'board start did not submit on resolved endpoint'
+  : > "$d/log"
+  PATH="$d/bin:$PATH" FAKE_DIR="$d" FAKE_DUP_REF=1 FM_HOME="$h" FM_ROOT="$ROOT" \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_cmux_layout_start_board workspace:2' "$ROOT"
+  ! grep -q '^send' "$d/log" || fail 'ambiguous anchor ref must never receive board input'
+  pass 'cmux layout: board start resolves native anchor ref to one UUID and surface'
 }
 
 test_board_group_summary() {
@@ -203,3 +221,4 @@ test_board_group_summary
 test_home_names_and_labels
 test_buckets
 test_sidebar_hook
+test_start_board_resolves_anchor_ref

@@ -148,6 +148,7 @@ Without it the adapter behaves exactly as described above.
 - **Workers group.** One anchor-only cmux workspace group per home and window, named `<home>: Workers`, created under a home-local lock and an idempotency key.
   Task workspaces are created inside it with `--group`.
 - **Board.** The group's generated header runs `bin/fm-cmux-board.sh`.
+  Its `anchor_workspace_ref` resolves through the native tree to exactly one workspace UUID and surface before input is sent; ambiguous or absent anchors are left untouched.
   Every 10 seconds (`FM_CMUX_BOARD_INTERVAL`) it reads each task through `bin/fm-crew-state.sh` with forge reads off, redraws on change, renames the group with live counts, and colors worker tabs.
   It lists every task in the home and names each row's backend; only cmux tasks get tab colors.
   A state that is not verified stays `unknown` in its row, its count, and the group title, with the reason fm-crew-state gave, and is never counted as working.
@@ -207,7 +208,7 @@ The manager's own tab comes back through cmux's restore of its session, and its 
 - There is no native busy or push-event signal.
 - A target can disappear after structural readiness and before the operation.
 - The only-workspace cleanup path leaves a fresh default workspace and cannot close the window.
-- Without the Workers layout, label lookup and recovery are scoped to the current cmux window, so a task moved to a non-current window is a known recovery blind spot. The layout reads every window.
+- Label lookup and recovery use the native app-wide tree in every layout mode.
 - Workspace ids do not survive app relaunch and are never recovery authority.
 
 ## Regression entry points

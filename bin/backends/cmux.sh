@@ -355,6 +355,7 @@ fm_backend_cmux_all_workspaces_json() {
           ($win.selected_workspace_id | nonempty) and any($win.workspaces[]; .id == $win.selected_workspace_id)) and
         all(.workspaces[];
           (.id | nonempty) and
+          (.ref == null or (.ref | nonempty)) and
           (.title == null or (.title | type == "string")) and
           (.description == null or (.description | type == "string")) and
           ((.title | nonempty) or (.description | nonempty)) and
@@ -373,10 +374,11 @@ fm_backend_cmux_all_workspaces_json() {
       ))
     | select(unique_ids([$windows[].id]) and
         unique_ids([$windows[].workspaces[].id]) and
+        unique_ids([$windows[].workspaces[] | .ref // empty]) and
         unique_ids([$windows[].workspaces[].panes[].id]) and
         unique_ids([$windows[].workspaces[].panes[].surfaces[].id]))
     | {workspaces: [$windows[] as $win | $win.workspaces[] |
-        {id, title, description, window_id: $win.id,
+        {id, ref, title, description, window_id: $win.id,
          workspace_count: $win.workspace_count,
          panes: [.panes[] | {id, surface_ids: [.surfaces[].id]}]}]}
   ' 2>/dev/null
@@ -399,6 +401,20 @@ fm_backend_cmux_surface_id_for_workspace() {  # <workspace_id>
   inventory=$(fm_backend_cmux_all_workspaces_json) || return 1
   printf '%s' "$inventory" | jq -er --arg id "$wsid" \
     '[.workspaces[] | select(.id == $id) | .panes[].surface_ids[]] | select(length == 1) | .[0]' 2>/dev/null
+}
+
+# Resolve a native workspace UUID or app ref to exactly one UUID and one
+# surface. Group headers expose anchor_workspace_ref, while send and process
+# checks require the UUID; both identities must come from the same tree read.
+fm_backend_cmux_workspace_surface_for_identity() {  # <workspace-id-or-ref>
+  local identity=$1 inventory
+  inventory=$(fm_backend_cmux_all_workspaces_json) || return 1
+  printf '%s' "$inventory" | jq -er --arg identity "$identity" '
+    [.workspaces[] | select(.id == $identity or .ref == $identity)]
+    | select(length == 1) | .[0]
+    | [.id, .panes[].surface_ids[]]
+    | select(length == 2) | @tsv
+  ' 2>/dev/null
 }
 
 # Creation can acknowledge a workspace before it enters the list snapshot.
@@ -448,9 +464,9 @@ fm_backend_cmux_create_task() {  # <label> <cwd>
         return 0
         ;;
       1)
-        # The grouped create may have succeeded despite the missing ack. Wait
-        # for visibility, but never issue a second create on this path.
-        ids=$(fm_backend_cmux_await_created "$title") && { printf '%s' "$ids"; return 0; }
+        # The grouped create may have succeeded despite the missing ack.
+        # Preserve that endpoint for reconciliation; never issue a second
+        # create or announce an unacknowledged endpoint as ready.
         echo "error: cmux grouped create of '$title' was not confirmed; refusing a second create" >&2
         return 1
         ;;

@@ -55,6 +55,8 @@ case "$sub" in
   list-windows) printf '[{"id":"%s"}]\n' "$FAKE_WIN" ;;
   workspace)
     [ "$1" = list ] && cat "$F/workspaces.json" ;;
+  workspace-group)
+    [ "$1" = list ] && printf '{"groups":[{"ref":"workspace_group:1","name":"JarvisAIGeorge: Workers","anchor_workspace_ref":"workspace:2"}]}' ;;
   list-panes)
     ws=$(arg --workspace "$@")
     [ -f "$F/sf.$ws" ] || { echo "Error: not_found"; exit 1; }
@@ -300,6 +302,25 @@ test_unreadable_tab_selected_then_restored() {
   pass "reboot heal: selects an unreadable tab once, then restores the previous selection"
 }
 
+test_dead_board_restart_resolves_anchor_ref() {
+  local d="$TMP_ROOT/board-restart" tag out
+  mkdir -p "$d"; make_fake "$d"; new_home "$d"
+  tag=$(hometag "$d")
+  add_tab "$d" MGR S-MGR "fm-$tag-manager" ttys080 180 claude
+  add_tab "$d" ANCHOR_UUID ANCHOR_SF 'Workers header' ttys081 181 -zsh
+  add_tab "$d" WORK S-WORK "fm-$tag-worker" ttys082 182 claude
+  jq '(.workspaces[] | select(.id == "ANCHOR_UUID") | .ref) = "workspace:2"' \
+    "$d/fake/workspaces.json" > "$d/fake/workspaces.tmp"
+  mv "$d/fake/workspaces.tmp" "$d/fake/workspaces.json"
+  write_meta "$d" worker WORK S-WORK
+  echo MGR > "$d/home/state/.cmux-manager-ws"
+  echo workers > "$d/home/config/cmux-layout"
+  out=$(run_heal "$d" --force)
+  grep -q '^send --workspace ANCHOR_UUID --surface ANCHOR_SF ' "$d/fake/log" || fail "dead board was not restarted at the resolved anchor: $out"
+  grep -q '^send-key --workspace ANCHOR_UUID --surface ANCHOR_SF Enter$' "$d/fake/log" || fail 'dead board restart did not submit at the resolved anchor'
+  pass 'reboot heal: dead board restart resolves anchor ref to UUID and surface'
+}
+
 test_agent_state
 test_epoch_gate
 test_dry_run_changes_nothing
@@ -308,4 +329,5 @@ test_refreshes_endpoint_and_clears_residue
 test_trust_prompt_only_for_own_copy
 test_bare_shell_restored
 test_unrecoverable_left_for_recovery
+test_dead_board_restart_resolves_anchor_ref
 test_unreadable_tab_selected_then_restored
