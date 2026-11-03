@@ -200,6 +200,32 @@ SH
   pass "sidebar: PR and issue pills from gh or the branch name, with links; none on the default branch"
 }
 
+test_refs_refresh_ignores_host_stat() {
+  local d repo
+  d=$(new_case refs-stat)
+  repo="$d/repo"
+  git init -q -b main "$repo"
+  git -C "$repo" -c user.email=t@example.invalid -c user.name=t commit -q --allow-empty -m init
+  git -C "$repo" checkout -q -b topic
+  # A stat that answers neither BSD nor GNU style, like GNU stat reading -f as
+  # filesystem status: the refresh must not depend on it.
+  printf '#!/usr/bin/env bash\necho "  File: weird filesystem text"\nexit 0\n' > "$d/bin/stat"
+  # shellcheck disable=SC2016 # expanded by the fake gh
+  printf '#!/usr/bin/env bash\n[ -f "$SB_CASE/no-pr" ] && exit 1\necho %s\n' \
+    "'{\"number\":3,\"url\":\"https://github.com/o/r/pull/3\",\"state\":\"OPEN\"}'" > "$d/bin/fakegh"
+  chmod +x "$d/bin/stat" "$d/bin/fakegh"
+  ev "$d" "{\"hook_event_name\":\"SessionStart\",\"session_id\":\"s1\",\"source\":\"startup\",\"cwd\":\"$repo\"}" JARVIS_SIDEBAR_GH=fakegh
+  last "$d" jarvis_pr | grep -q 'PR #3 open' || fail "the PR pill must appear: $(last "$d" jarvis_pr)"
+  : > "$d/no-pr"
+  ev "$d" "{\"hook_event_name\":\"Stop\",\"session_id\":\"s1\",\"cwd\":\"$repo\"}" JARVIS_SIDEBAR_GH=fakegh JARVIS_SIDEBAR_REFS_SECS=0
+  last "$d" jarvis_pr | grep -q '^clear-status jarvis_pr' || fail "the refresh must not depend on the host's stat: $(last "$d" jarvis_pr)"
+  rm -f "$d/no-pr"
+  : > "$d/log"
+  ev "$d" "{\"hook_event_name\":\"Stop\",\"session_id\":\"s1\",\"cwd\":\"$repo\"}" JARVIS_SIDEBAR_GH=fakegh
+  ! grep -q 'jarvis_pr' "$d/log" || fail "within the refresh window the same branch must not be looked up again"
+  pass "sidebar: PR refresh and its rate limit work whatever the host's stat does"
+}
+
 test_noop_outside_cmux_and_silent
 test_activity_and_tool_lines
 test_permission_and_notifications
@@ -208,3 +234,4 @@ test_ownership
 test_parallel_hooks_converge
 test_failed_write_is_retried
 test_pr_and_issue_pills
+test_refs_refresh_ignores_host_stat

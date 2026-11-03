@@ -421,11 +421,13 @@ writer_refs() {
   [ -n "$cwd" ] && [ -d "$cwd" ] || return 0
   branch=$(bounded 2 git -C "$cwd" symbolic-ref --short -q HEAD) || branch=""
   key="$cwd@$branch"
-  get refs_key; old=$V
+  # refs_key holds "<epoch> <key>" for the last lookup: the age comes from our
+  # own record, never a file mtime, so GNU and BSD stat cannot disagree.
+  get refs_key; old=${V#* }
   now=$(date +%s)
-  [ -f "$SD/refs_key" ] && age=$(( now - $(stat -c %Y "$SD/refs_key" 2>/dev/null || stat -f %m "$SD/refs_key" 2>/dev/null || echo 0) ))
+  case "${V%% *}" in ''|*[!0-9]*) ;; *) age=$(( now - ${V%% *} )) ;; esac
   [ "$old" = "$key" ] && [ "$age" -lt "${JARVIS_SIDEBAR_REFS_SECS:-120}" ] && return 0
-  put refs_key "$key"
+  put refs_key "$now $key"
   base=$(bounded 2 git -C "$cwd" symbolic-ref --short -q refs/remotes/origin/HEAD) || base=""
   base=${base#origin/}
   if [ -z "$branch" ] || [ "$branch" = "${base:-main}" ] || [ "$branch" = main ] || [ "$branch" = master ]; then
