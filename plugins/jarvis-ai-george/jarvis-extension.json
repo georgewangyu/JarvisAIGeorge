@@ -3,7 +3,7 @@
   "id": "jarvis-ai-george",
   "name": "JarvisAIGeorge",
   "core": true,
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Jarvis core: the manager agent you talk to, the extension catalog, and the brainstorm, grill-me, principles and mistake-miner skills. Planning, specs, coding and review come from extensions such as GeorgeCodingAgent.",
   "repo": "georgewangyu/JarvisAIGeorge",
   "plugin_path": "plugins/jarvis-ai-george",
