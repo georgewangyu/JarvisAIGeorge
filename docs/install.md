@@ -65,11 +65,14 @@ First-run setup offers the shortcut. On your yes it writes this block to `~/.zsh
 
 ```sh
 # >>> jarvis-launch shortcut: jarvis (added by bin/jarvis-setup.sh; undo: ~/jarvis/bin/jarvis-setup.sh shortcut remove --name jarvis) >>>
-alias jarvis='cd ~/work && ~/jarvis/bin/jarvis-launch'
+alias jarvis='cd ~/work && ~/jarvis/bin/jarvis-launch --claude'
 # <<< jarvis-launch shortcut: jarvis <<<
 ```
 
-By hand: `~/jarvis/bin/jarvis-setup.sh shortcut add --name jarvis --folder ~/work`. Undo: `~/jarvis/bin/jarvis-setup.sh shortcut remove --name jarvis`.
+The alias ends in `--codex` when setup runs under Codex (or with `--harness codex`). Arguments you type after `jarvis` pass through to the tool.
+
+By hand: `~/jarvis/bin/jarvis-setup.sh shortcut add --name jarvis --folder ~/work [--harness claude|codex]`. Undo: `~/jarvis/bin/jarvis-setup.sh shortcut remove --name jarvis`.
+Use the generated shortcut rather than writing your own: a hand-made `codex -C <folder>` alias loads the role but never sets `JARVIS_HOME` or `FM_HOME`, so workers cannot start.
 Nothing edits a shell file without your yes.
 
 What `jarvis-launch` does:
@@ -78,9 +81,9 @@ What `jarvis-launch` does:
 - Anywhere else it keeps your folder as the working directory and starts `claude --agent jarvis-ai-george:jarvis-ai-george` (the core plugin's manager). It sets `JARVIS_HOME` and `FM_HOME` to the clone, and passes the clone's hooks with `--settings`: session start, setup check, guards and the MCP write guard, all run from the clone.
 - Jarvis then reads `$JARVIS_HOME/AGENTS.md` as the home contract before any fleet action. Your folder's instructions decide how it talks and works; the home contract decides fleet safety.
 - If another session already holds the home's lock, the new one stays read-only. Starting Jarvis never takes over a running fleet.
-- Codex: `jarvis-launch --codex` starts `codex` in your folder with a first prompt that loads `$role-jarvis` and the home contract. Verify this on your own machine.
+- Codex: `jarvis-launch --codex` starts `codex` in your folder with `JARVIS_HOME` and `FM_HOME` set and a first prompt that loads `$role-jarvis` and the home contract. Verify this on your own machine.
 
-Loading the `role-jarvis` skill by itself, outside a home and without the launcher, gives you the manager without a fleet: it plans and routes, but runs no hooks, takes no lock and starts no workers.
+Loading the `role-jarvis` skill by itself, outside a home and without the launcher, gives you the manager without a fleet: it plans and routes, but runs no hooks, takes no lock and starts no workers. It says so in its first reply, with the command to start it properly (`jarvis`, or `~/jarvis/bin/jarvis-launch --codex` from your folder), rather than looking ready until you ask for a worker.
 
 Checks:
 

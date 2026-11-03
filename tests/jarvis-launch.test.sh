@@ -61,16 +61,40 @@ test_inside_home_is_plain_claude() {
 }
 
 test_codex_first_prompt() {
-  local bin="$TMP_ROOT/bin3" outer="$TMP_ROOT/outer3" calls
+  local bin="$TMP_ROOT/bin3" outer="$TMP_ROOT/outer3" calls want
   make_stub "$bin" codex
   mkdir -p "$outer"
-  (cd "$outer" && PATH="$bin:$PATH" "$LAUNCH" --codex) || fail "launch must exec codex"
+  (cd "$outer" && env -u FM_HOME PATH="$bin:$PATH" "$LAUNCH" --codex) || fail "launch must exec codex"
   calls=$(cat "$bin/codex.calls")
   printf "%s\n" "$calls" | grep -qF "arg=Load \$role-jarvis first" || fail "codex must load role-jarvis first: $calls"
   printf '%s\n' "$calls" | grep -q "$ROOT/AGENTS.md" || fail "codex must be pointed at the home contract: $calls"
-  pass "jarvis-launch: codex starts in the folder and loads role-jarvis and the home contract (stub only)"
+  printf '%s\n' "$calls" | grep -qx "cwd=$(cd "$outer" && pwd -P)" || fail "codex must start in the requested folder: $calls"
+  printf '%s\n' "$calls" | grep -qx "JARVIS_HOME=$ROOT" || fail "codex must get JARVIS_HOME: $calls"
+  printf '%s\n' "$calls" | grep -qx "FM_HOME=$ROOT" || fail "codex must get FM_HOME, or a worker request fails later (#17): $calls"
+  (cd "$outer" && env -u FM_HOME PATH="$bin:$PATH" "$LAUNCH" --codex -m gpt-5 --search) || fail "launch with arguments must exec codex"
+  calls=$(cat "$bin/codex.calls")
+  for want in arg=-m arg=gpt-5 arg=--search; do
+    printf '%s\n' "$calls" | grep -qx -- "$want" || fail "arguments typed after the shortcut must reach codex ($want): $calls"
+  done
+  pass "jarvis-launch: codex starts in the folder with JARVIS_HOME, FM_HOME and its arguments, and loads role-jarvis and the home contract (stub only)"
+}
+
+# A role-only start (the tool loads role-jarvis without the launcher) cannot be
+# driven with a stub model, so pin the role's contract: it checks the home
+# environment before its first reply and names the fix, never acting ready.
+test_role_only_start_names_the_missing_home() {
+  local role="$ROOT/plugins/jarvis-ai-george/skills/role-jarvis/SKILL.md" f
+  for f in "$role" "$ROOT/plugins/jarvis-ai-george/agents/jarvis-ai-george.md"; do
+    grep -qF 'printenv JARVIS_HOME FM_HOME' "$f" || fail "$f must check JARVIS_HOME and FM_HOME before the first reply"
+    grep -qF 'cannot start workers' "$f" || fail "$f must say a session without the home cannot start workers"
+    grep -qF 'bin/jarvis-launch --codex' "$f" || fail "$f must name the jarvis-launch --codex fix"
+    grep -qF 'never take over another manager' "$f" || fail "$f must forbid taking over another fleet"
+  done
+  grep -qF 'bin/jarvis-launch --codex' "$ROOT/AGENTS.md" || fail "the AGENTS.md Codex line must name the launcher"
+  pass "role-jarvis: a role-only start checks the home environment and names the launcher fix instead of acting ready"
 }
 
 test_outer_folder_claude
 test_inside_home_is_plain_claude
 test_codex_first_prompt
+test_role_only_start_names_the_missing_home

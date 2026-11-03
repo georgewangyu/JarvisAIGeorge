@@ -146,12 +146,12 @@ test_address_and_shortcut() {
   HOME="$fake" run "$h" "$c" shortcut add --name jv --folder "$fake/work" > "$TMP_ROOT/sc.out" || fail "shortcut add must succeed"
   grep -q 'Undo: .*shortcut remove --name jv' "$TMP_ROOT/sc.out" || fail "shortcut add must print the undo command"
   for rc in "$fake/.zshrc" "$fake/.bashrc"; do
-    grep -qx "alias jv='cd $fake/work && $ROOT/bin/jarvis-launch'" "$rc" || fail "$rc must carry the alias: $(cat "$rc")"
+    grep -qx "alias jv='cd $fake/work && $ROOT/bin/jarvis-launch --claude'" "$rc" || fail "$rc must carry the alias: $(cat "$rc")"
   done
   before=$(cat "$fake/.zshrc")
   HOME="$fake" run "$h" "$c" shortcut add --name jv --folder "$fake/work" >/dev/null
   [ "$(cat "$fake/.zshrc")" = "$before" ] || fail "a second add must be idempotent"
-  [ "$(cat "$h/config/shortcut")" = "jv $fake/work" ] || fail "the shortcut choice must be recorded"
+  [ "$(cat "$h/config/shortcut")" = "jv $fake/work claude" ] || fail "the shortcut choice must be recorded"
   HOME="$fake" run "$h" "$c" shortcut remove --name jv >/dev/null
   [ "$(cat "$fake/.zshrc")" = "export KEEP=1" ] || fail "remove must leave the rest of the file as it was: $(cat "$fake/.zshrc")"
   grep -q jarvis-launch "$fake/.bashrc" && fail "remove must clear every rc file"
@@ -184,6 +184,24 @@ test_status_explains_backend() {
   pass "jarvis-setup: status shows the saved backend, the detected terminal and where new workers spawn, separately"
 }
 
+test_codex_shortcut_goes_through_the_launcher() {
+  local h="$TMP_ROOT/csc" c="$TMP_ROOT/csc-claude" fake="$TMP_ROOT/csc-home"
+  mkdir -p "$h" "$c" "$fake/work"
+  printf '# zsh\n' > "$fake/.zshrc"
+  HOME="$fake" JARVIS_HARNESS=codex FM_HOME="$h" CLAUDE_CONFIG_DIR="$c" \
+    "$SETUP" shortcut add --name jx --folder "$fake/work" >/dev/null || fail "codex shortcut add must succeed"
+  grep -qx "alias jx='cd $fake/work && $ROOT/bin/jarvis-launch --codex'" "$fake/.zshrc" \
+    || fail "a Codex shortcut must run jarvis-launch --codex, never a bare codex -C: $(cat "$fake/.zshrc")"
+  HOME="$fake" JARVIS_HARNESS=claude FM_HOME="$h" CLAUDE_CONFIG_DIR="$c" \
+    "$SETUP" shortcut add --name jx --folder "$fake/work" --harness codex >/dev/null
+  grep -qx "alias jx='cd $fake/work && $ROOT/bin/jarvis-launch --codex'" "$fake/.zshrc" \
+    || fail "--harness codex must win over the current tool"
+  [ "$(grep -c 'alias jx=' "$fake/.zshrc")" = 1 ] || fail "re-adding must replace, not duplicate"
+  HOME="$fake" FM_HOME="$h" "$SETUP" shortcut add --name jx --folder "$fake/work" --harness pi >/dev/null 2>&1 \
+    && fail "an unknown harness must be refused"
+  pass "jarvis-setup: a Codex shortcut goes through jarvis-launch --codex, so the home and fleet are set"
+}
+
 test_backend_choice
 test_detect_names_gaps
 test_update_check_off
@@ -193,3 +211,4 @@ test_installed_from_either_marketplace
 test_codex_sessionstart_hook
 test_address_and_shortcut
 test_status_explains_backend
+test_codex_shortcut_goes_through_the_launcher

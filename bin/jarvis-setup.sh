@@ -32,10 +32,12 @@
 #   bin/jarvis-setup.sh update-check    bounded network check: is the home behind
 #                                       origin, is plugin auto-update on. Quiet
 #                                       when current. Off: config/update-check=off
-#   bin/jarvis-setup.sh shortcut add [--name N] [--folder DIR] [--rc FILE]...
+#   bin/jarvis-setup.sh shortcut add [--name N] [--folder DIR] [--harness claude|codex] [--rc FILE]...
 #                                       write a marked, idempotent alias block
 #                                       (default name jarvis) to ~/.zshrc and
-#                                       ~/.bashrc: alias N='cd DIR && <home>/bin/jarvis-launch'.
+#                                       ~/.bashrc: alias N='cd DIR && <home>/bin/jarvis-launch --<harness>'
+#                                       (default: the current tool). Arguments after N
+#                                       pass through.
 #                                       Run only after the user approves; prints
 #                                       the undo command
 #   bin/jarvis-setup.sh shortcut remove [--name N] [--rc FILE]...
@@ -378,7 +380,7 @@ shortcut_strip() {  # <rc> <name>: remove that shortcut's marked block, if any
 }
 
 cmd_shortcut() {
-  local sub=${1:-} name=jarvis folder='' rc
+  local sub=${1:-} name=jarvis folder='' rc harness=$HARNESS
   [ -n "$sub" ] && shift
   SHORTCUT_RCS=()
   while [ "$#" -gt 0 ]; do
@@ -386,26 +388,31 @@ cmd_shortcut() {
       --name) name=${2:-}; shift 2 ;;
       --folder) folder=${2:-}; shift 2 ;;
       --rc) SHORTCUT_RCS+=("${2:-}"); shift 2 ;;
+      --harness) harness=${2:-}; shift 2 ;;
       *) die "unknown shortcut option '$1'" ;;
     esac
   done
   printf '%s' "$name" | grep -Eq '^[A-Za-z_][A-Za-z0-9_-]*$' || die "shortcut name must be a plain word: '$name'"
+  case "$harness" in claude|codex) ;; *) die "shortcut harness must be claude or codex: '$harness'" ;; esac
   mkdir -p "$CONFIG"
   case "$sub" in
     add)
       [ -n "$folder" ] || folder=$PWD
       folder=$(cd "$folder" 2>/dev/null && pwd) || die "folder does not exist"
       case "$folder$ROOT" in *"'"*) die "paths with a single quote are not supported" ;; esac
+      # Always through jarvis-launch, which sets JARVIS_HOME and FM_HOME: a
+      # hand-made `codex -C <folder>` alias loads the role but has no fleet (#17).
+      # Arguments typed after the shortcut name pass through to the tool.
       while read -r rc; do
         shortcut_strip "$rc" "$name"
         {
           printf '# >>> jarvis-launch shortcut: %s (added by bin/jarvis-setup.sh; undo: %s/bin/jarvis-setup.sh shortcut remove --name %s) >>>\n' "$name" "$ROOT" "$name"
-          printf "alias %s='cd %s && %s/bin/jarvis-launch'\n" "$name" "$folder" "$ROOT"
+          printf "alias %s='cd %s && %s/bin/jarvis-launch --%s'\n" "$name" "$folder" "$ROOT" "$harness"
           printf '# <<< jarvis-launch shortcut: %s <<<\n' "$name"
         } >> "$rc"
-        echo "ok: shortcut $name in $rc"
+        echo "ok: shortcut $name in $rc ($harness)"
       done < <(shortcut_rcs)
-      printf '%s %s\n' "$name" "$folder" > "$CONFIG/shortcut"
+      printf '%s %s %s\n' "$name" "$folder" "$harness" > "$CONFIG/shortcut"
       echo "Open a new terminal (or source the file), then type: $name"
       echo "Undo: $ROOT/bin/jarvis-setup.sh shortcut remove --name $name"
       ;;
@@ -419,7 +426,7 @@ cmd_shortcut() {
       echo none > "$CONFIG/shortcut"
       echo "ok: no shortcut (add one later with bin/jarvis-setup.sh shortcut add)"
       ;;
-    *) die "usage: shortcut add|remove|none [--name N] [--folder DIR] [--rc FILE]" ;;
+    *) die "usage: shortcut add|remove|none [--name N] [--folder DIR] [--harness claude|codex] [--rc FILE]" ;;
   esac
 }
 

@@ -33,7 +33,11 @@ When `JARVIS_HOME` is set and the working directory is outside it:
 2. The launcher runs the home's session-start hooks. If their output says the home's session lock was refused, stay read-only as that contract says: loading this role never takes over a running manager's fleet.
 3. The user's folder instructions own how you talk and work; the home contract owns fleet safety. If they conflict on safety, the home contract wins; say so.
 
-Without `JARVIS_HOME` and outside a home you have no fleet: plan, route and answer, and point the user at the `jarvis-launch` shortcut in `docs/install.md` for workers.
+**Check the environment before your first reply.** Run `printenv JARVIS_HOME FM_HOME` (one command). You are in a home when the working directory has `bin/jarvis-setup.sh` and `AGENTS.md`; there an unset `JARVIS_HOME` is fine. Outside a home, if `JARVIS_HOME` or `FM_HOME` is missing, you have no fleet, and you must not act ready for worker requests. Say so in your first reply, in one or two lines, with the fix:
+
+- "This session started without the Jarvis home (JARVIS_HOME and FM_HOME are not set), so I can plan and answer but cannot start workers. Start me with your `jarvis` shortcut, or run `<home>/bin/jarvis-launch --codex` (Claude Code: `--claude`) from this folder, where `<home>` is your JarvisAIGeorge clone (default `~/jarvis`)."
+
+Then keep helping with planning and answers. Never claim you registered as the controller, never take over another manager's fleet, and never start a worker by guessing the home path.
 
 ## First-time setup
 
