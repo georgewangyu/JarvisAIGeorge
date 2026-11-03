@@ -113,15 +113,15 @@ Cleanup owns the whole workspace and uses `close-workspace`.
 cmux also refuses to remove the only workspace in a macOS window while returning a misleading success response.
 When the task is last in its window, Firstmate creates one unfocused unnamed sibling workspace in that same window, closes the task workspace, and leaves the window with cmux's fresh default workspace.
 The sibling never carries an `fm-` title and is ignored by recovery.
-Creation starts only after a readable, schema-checked inventory proves its scoped label absent.
-Creation acknowledgements can precede workspace-list visibility, so launch polls identity and default-surface readiness without repeating creation.
+Creation starts only after a checked native `system.tree` RPC with `all_windows=true` proves its scoped label absent across the app.
+Creation acknowledgements can precede tree visibility, so launch polls identity and default-surface readiness without repeating creation.
 A grouped creation attempt that fails or remains unconfirmed never falls through to a second plain creation.
 
-Cleanup requires a nonempty, labelled workspace inventory in every listed window, checks that the task has a unique scoped label and exactly its recorded sole surface before the first close, then verifies that neither its workspace ID nor label remains.
+Cleanup uses the same native app-wide topology, checks that the task has a unique scoped label and exactly its recorded sole surface immediately before the first close and any forced close, then verifies that neither its workspace ID nor label remains in a fresh native read.
 A running-process confirmation may be retried only for that same unique task identity and exact sole surface, after teardown's existing work-safety gates.
 A failed or unreadable close retains metadata, including under teardown's `--force`; its backlog-close marker is published only after absence is proven.
 
-The exact window membership is re-read before this operation.
+The direct RPC is required because `cmux tree --all` can silently fall back to a sequence of window-scoped reads when the connected server lacks `system.tree`; the client version alone does not prove native support. The nested window, workspace, pane, and surface identities and declared counts must be internally consistent, or creation, close, and recovery-grade liveness fail closed. The server's native method gives a coherent view of live routable windows at read time; another UI actor can still change them after the reply.
 A selected workspace that is not last closes normally; selection itself is not the trigger.
 Firstmate does not attempt to close the macOS window because cmux's socket cannot close a window holding a live terminal.
 
@@ -156,7 +156,7 @@ Without it the adapter behaves exactly as described above.
   Because it reads the same pane and run-step state as supervision, it covers Codex and every other harness, including those that run no hooks.
 - **Titles and identity.** A task tab is titled `◆ <task-id>`, and its scoped label `fm-<home-tag>-<id>` moves to the cmux workspace description.
   Every lookup accepts the title or the description, so home scoping, recovery, list, and cleanup keep working.
-  With the layout on, lookups read every cmux window instead of only the caller's, so a teardown or peek run from another window still finds the task.
+  Lifecycle lookups read every cmux window regardless of layout mode, so a teardown or peek run from another window still finds the task.
 - **Sidebar state for Claude.** The core plugin's `hooks/jarvis-sidebar.sh` sets a `jarvis` pill on its own workspace: `working` on a prompt or tool call, `needs you` on a permission prompt, `done` when a turn ends, cleared at session end.
   Idle reminders are ignored, and it is a no-op outside cmux.
   Codex workers get no pill: their launches turn Codex hooks off, so the board's polling is their only tab state (colors and counts).
@@ -168,7 +168,7 @@ Gate evidence and what is untested (Codex, secondmates): `docs/verification/runt
 
 `fm_backend_cmux_agent_state` in `bin/backends/cmux.sh` is the recovery-grade probe `bin/fm-backend.sh` asks for.
 It reads the surface's tty and foreground process groups from `cmux top --processes --json`, lists that tty with `ps`, and classifies each foreground process through `bin/fm-agent-process-lib.sh`, the same classifier tmux uses.
-A verified harness reads `alive`, a foreground of shells only reads `dead`, a workspace or surface absent from every window reads `missing`, and anything else (the app down, a restore command still running) reads `unreadable`.
+A verified harness reads `alive`, a foreground of shells only reads `dead`, a workspace or surface absent from a checked native all-window tree reads `missing`, and anything else (the app down, an incomplete tree, a restore command still running) reads `unreadable`.
 Only `dead` and `missing` license recovery, so `bin/fm-control.sh` exit and relaunch and `bin/fm-spawn.sh --relaunch` now work on cmux.
 
 ## Reboot heal

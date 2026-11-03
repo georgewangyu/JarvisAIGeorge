@@ -39,6 +39,19 @@ arg() { local k=$1; shift; while [ $# -gt 0 ]; do [ "$1" = "$k" ] && { printf '%
 case "$sub" in
   ping) echo PONG ;;
   version) echo "cmux 0.64.25 (106) [fake]" ;;
+  rpc)
+    [ "${1:-}" = system.tree ] || exit 1
+    all='[]'
+    while IFS= read -r ws; do
+      [ -n "$ws" ] || continue
+      sf=$(cat "$F/sf.$ws" 2>/dev/null || printf 'absent-%s' "$ws")
+      one=$(jq -c --arg id "$ws" '.workspaces[] | select(.id == $id)' "$F/workspaces.json")
+      all=$(printf '%s' "$all" | jq -c --argjson one "$one" --arg sf "$sf" '
+        . + [($one + {panes:[{id:("pane-"+$one.id),surface_count:1,
+          surface_ids:[$sf],surfaces:[{id:$sf}]}]})]')
+    done < <(jq -r '.workspaces[].id' "$F/workspaces.json")
+    jq -n --arg win "$FAKE_WIN" --argjson ws "$all" \
+      '{windows:[{id:$win,workspace_count:($ws|length),workspaces:$ws}]}' ;;
   list-windows) printf '[{"id":"%s"}]\n' "$FAKE_WIN" ;;
   workspace)
     [ "$1" = list ] && cat "$F/workspaces.json" ;;

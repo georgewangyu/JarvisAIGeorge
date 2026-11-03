@@ -68,36 +68,27 @@ SH
   printf '%s\n' "$fb"
 }
 
-cmux_workspace_list_response() {  # <dir> <n> <id1> <title1> [<id2> <title2> ...]
-  local dir=$1 n=$2 json first=1
-  shift 2
-  json='{"workspaces":['
-  while [ $# -ge 2 ]; do
-    [ "$first" -eq 1 ] || json="$json,"
-    json="$json{\"id\":\"$1\",\"title\":\"$2\"}"
-    first=0
-    shift 2
+# A direct system.tree RPC fixture. Three arguments per workspace: UUID,
+# title, surface UUID. The one-window helper keeps lifecycle tests focused on
+# native method provenance rather than CLI tree's silent fallback.
+cmux_tree_response() {  # <dir> <n> <window-id> [<ws-id> <title> <surface-id> ...]
+  local dir=$1 n=$2 win=$3 id title sf
+  shift 3
+  jq -n --arg win "$win" '{windows:[{id:$win,workspace_count:0,workspaces:[]}]}' > "$dir/responses/$n.out"
+  while [ $# -ge 3 ]; do
+    id=$1 title=$2 sf=$3; shift 3
+    jq --arg id "$id" --arg title "$title" --arg sf "$sf" '
+      .windows[0].workspaces += [{id:$id,title:$title,description:null,
+        panes:[{id:("pane-"+$id),surface_count:1,surface_ids:[$sf],
+          selected_surface_id:$sf,surfaces:[{id:$sf}]}]}]
+      | .windows[0].workspace_count = (.windows[0].workspaces|length)
+    ' "$dir/responses/$n.out" > "$dir/responses/$n.tmp"
+    mv "$dir/responses/$n.tmp" "$dir/responses/$n.out"
   done
-  json="$json]}"
-  printf '%s' "$json" > "$dir/responses/$n.out"
 }
 
 cmux_panes_response() {  # <dir> <n> <surface_id>
   printf '{"panes":[{"selected_surface_id":"%s","surface_ids":["%s"]}]}' "$3" "$3" > "$1/responses/$2.out"
-}
-
-cmux_windows_response() {  # <dir> <n> <window_id1> <count1> [<window_id2> <count2> ...]
-  local dir=$1 n=$2 json first=1
-  shift 2
-  json='['
-  while [ $# -ge 2 ]; do
-    [ "$first" -eq 1 ] || json="$json,"
-    json="$json{\"id\":\"$1\",\"workspace_count\":$2}"
-    first=0
-    shift 2
-  done
-  json="$json]"
-  printf '%s' "$json" > "$dir/responses/$n.out"
 }
 
 cmux_panes_empty_response() {  # <dir> <n>
@@ -466,7 +457,7 @@ test_create_task_refuses_duplicate_label() {
   local dir fb out status title
   dir="$TMP_ROOT/dup-task"; mkdir -p "$dir/responses"
   title=$(cmux_expected_scoped_title fm-dup1)
-  cmux_workspace_list_response "$dir" 1 "aaaaaaaa-0000-0000-0000-000000000000" "$title"
+  cmux_tree_response "$dir" 1 window-1 "aaaaaaaa-0000-0000-0000-000000000000" "$title" surface-1
   fb=$(make_cmux_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-dup1 /tmp/proj' "$ROOT" 2>&1 )
@@ -476,17 +467,63 @@ test_create_task_refuses_duplicate_label() {
   pass "fm_backend_cmux_create_task: refuses a duplicate workspace title (cmux's own new-workspace has no uniqueness check)"
 }
 
+test_create_task_refuses_other_window_duplicate() {
+  local dir fb title out rc
+  dir="$TMP_ROOT/dup-other-window"; mkdir -p "$dir/responses"
+  title=$(cmux_expected_scoped_title fm-crosswindow)
+  cmux_tree_response "$dir" 1 window-1 other independent other-surface
+  jq --arg t "$title" '
+    .windows += [{id:"window-2",workspace_count:1,workspaces:[
+      {id:"task-in-other-window",title:$t,description:null,
+       panes:[{id:"other-pane",surface_count:1,surface_ids:["other-window-surface"],
+         surfaces:[{id:"other-window-surface"}]}]}]}]
+  ' "$dir/responses/1.out" > "$dir/responses/1.tmp" && mv "$dir/responses/1.tmp" "$dir/responses/1.out"
+  fb=$(make_cmux_fakebin "$dir")
+  for layout in off workers; do
+    printf 0 > "$dir/responses/.count"
+    out=$(PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" FM_CMUX_LAYOUT="$layout" \
+      bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-crosswindow /tmp/proj' "$ROOT" 2>&1)
+    rc=$?
+    [ "$rc" -ne 0 ] || fail "$layout create ignored the other-window scoped label"
+    assert_contains "$out" 'already exists' "$layout create did not report the duplicate"
+  done
+  assert_no_grep 'new-workspace' "$dir/log" 'other-window duplicate reached creation'
+  pass 'cmux create: plain and grouped preflight checks every native window'
+}
+
+test_create_task_refuses_native_failure_and_count_mismatch() {
+  local dir fb mode out rc
+  for mode in no-native count-mismatch; do
+    dir="$TMP_ROOT/create-$mode"; mkdir -p "$dir/responses"
+    cmux_tree_response "$dir" 1 window-1 other independent other-surface
+    if [ "$mode" = count-mismatch ]; then
+      jq '.windows[0].workspace_count = 2' "$dir/responses/1.out" > "$dir/responses/1.tmp"
+      mv "$dir/responses/1.tmp" "$dir/responses/1.out"
+    else
+      printf 1 > "$dir/responses/1.exit"
+    fi
+    fb=$(make_cmux_fakebin "$dir")
+    out=$(PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+      bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-crosswindow /tmp/proj' "$ROOT" 2>&1)
+    rc=$?
+    [ "$rc" -ne 0 ] || fail "create accepted $mode"
+    assert_no_grep 'new-workspace' "$dir/log" "create mutated after $mode"
+    assert_no_grep $'\x1f''tree' "$dir/log" "create used CLI tree fallback after $mode"
+  done
+  pass 'cmux create: native method failure and count mismatch fail closed without CLI fallback'
+}
+
 test_create_task_creates_and_parses_ids() {
   local dir fb out title
   dir="$TMP_ROOT/create-task"; mkdir -p "$dir/responses"
   title=$(cmux_expected_scoped_title fm-newtask)
-  # 1: workspace list --json (pre-create duplicate check) -> no match
-  cmux_workspace_list_response "$dir" 1 other independent
+  # 1: native app-wide tree (pre-create duplicate check) -> no match
+  cmux_tree_response "$dir" 1 window-1 other independent other-surface
   # 2: new-workspace (silent on success)
-  # 3: workspace list --json (post-create id resolution) -> match
-  cmux_workspace_list_response "$dir" 3 "bbbbbbbb-1111-1111-1111-111111111111" "$title"
-  # 4: list-panes --json --id-format uuids -> default surface id
-  cmux_panes_response "$dir" 4 "cccccccc-2222-2222-2222-222222222222"
+  # 3: native app-wide tree (post-create id resolution) -> match
+  cmux_tree_response "$dir" 3 window-1 "bbbbbbbb-1111-1111-1111-111111111111" "$title" "cccccccc-2222-2222-2222-222222222222"
+  # 4: native tree confirms the default surface identity.
+  cmux_tree_response "$dir" 4 window-1 "bbbbbbbb-1111-1111-1111-111111111111" "$title" "cccccccc-2222-2222-2222-222222222222"
   fb=$(make_cmux_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-newtask /tmp/proj' "$ROOT" )
@@ -499,100 +536,52 @@ test_create_task_creates_and_parses_ids() {
   pass "fm_backend_cmux_create_task: creates a workspace and parses workspace_id/surface_id from list responses"
 }
 
-# --- create_task: visibility after an acknowledged create (issue #4) ---------
-
-cmux_create_count() {  # <log>
-  grep -c $'\x1f''new-workspace' "$1" 2>/dev/null || true
-}
-
-test_create_task_waits_for_delayed_visibility() {
-  local dir fb out title
-  dir="$TMP_ROOT/create-delayed"; mkdir -p "$dir/responses"
-  title=$(cmux_expected_scoped_title fm-slow)
-  printf '{"workspaces":[]}' > "$dir/responses/1.out"   # duplicate check
-  # 2: new-workspace acknowledged
-  printf '{"workspaces":[]}' > "$dir/responses/3.out"   # not yet listed
-  printf '{"workspaces":[]}' > "$dir/responses/4.out"   # still not listed
-  cmux_workspace_list_response "$dir" 5 "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" "$title"
-  cmux_panes_response "$dir" 6 "cccccccc-2222-2222-2222-cccccccccccc"
-  fb=$(make_cmux_fakebin "$dir")
-  out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" FM_CMUX_CREATE_WAIT_SLEEP=0 \
-    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-slow /tmp/proj' "$ROOT" )
-  [ "$out" = "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb cccccccc-2222-2222-2222-cccccccccccc" ] \
-    || fail "a delayed-visible create should resolve, got '$out'"
-  [ "$(cmux_create_count "$dir/log")" = 1 ] || fail "exactly one create call expected"
-  pass "fm_backend_cmux_create_task: waits for a delayed-visible workspace with one create"
-}
-
-test_create_task_keeps_invisible_endpoint_without_recreating() {
-  local dir fb out status title
-  dir="$TMP_ROOT/create-never"; mkdir -p "$dir/responses"
-  title=$(cmux_expected_scoped_title fm-ghost)
-  printf '{"workspaces":[]}' > "$dir/responses/1.out"
-  fb=$(make_cmux_fakebin "$dir")
-  out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
-    FM_CMUX_CREATE_WAIT_SLEEP=0 FM_CMUX_CREATE_WAIT_TRIES=3 \
-    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-ghost /tmp/proj' "$ROOT" 2>&1 )
-  status=$?
-  [ "$status" -ne 0 ] || fail "a never-visible create must fail"
-  assert_contains "$out" "left in place for reconciliation" "the failure must say the endpoint was kept"
-  [ "$(cmux_create_count "$dir/log")" = 1 ] || fail "a never-visible create must not be retried"
-  assert_not_contains "$(cat "$dir/log")" $'\x1f''close-workspace' "an ambiguous endpoint must not be closed"
-  pass "fm_backend_cmux_create_task: a never-visible create fails once, keeps the endpoint, never creates twice"
-}
-
-test_create_task_missing_surface_fails_once() {
-  local dir fb status title i
-  dir="$TMP_ROOT/create-nosurface"; mkdir -p "$dir/responses"
-  title=$(cmux_expected_scoped_title fm-nosf)
-  printf '{"workspaces":[]}' > "$dir/responses/1.out"
-  for i in 3 5 7; do
-    cmux_workspace_list_response "$dir" "$i" "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" "$title"
-    cmux_panes_empty_response "$dir" $((i + 1))
+test_create_task_binds_in_other_window() {
+  local dir fb title out n
+  dir="$TMP_ROOT/create-bind-other-window"; mkdir -p "$dir/responses"
+  title=$(cmux_expected_scoped_title fm-newtask)
+  cmux_tree_response "$dir" 1 window-1 other independent other-surface
+  for n in 3 4; do
+    cmux_tree_response "$dir" "$n" window-1 other independent other-surface
+    jq --arg t "$title" '
+      .windows += [{id:"window-2",workspace_count:1,workspaces:[
+        {id:"new-in-other-window",title:$t,description:null,
+         panes:[{id:"new-pane",surface_count:1,surface_ids:["new-surface"],
+           surfaces:[{id:"new-surface"}]}]}]}]
+    ' "$dir/responses/$n.out" > "$dir/responses/$n.tmp"
+    mv "$dir/responses/$n.tmp" "$dir/responses/$n.out"
   done
   fb=$(make_cmux_fakebin "$dir")
-  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
-    FM_CMUX_CREATE_WAIT_SLEEP=0 FM_CMUX_CREATE_WAIT_TRIES=3 \
-    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-nosf /tmp/proj' "$ROOT" >/dev/null 2>&1
-  status=$?
-  [ "$status" -ne 0 ] || fail "a workspace without a surface must fail"
-  [ "$(cmux_create_count "$dir/log")" = 1 ] || fail "a missing surface must not trigger another create"
-  pass "fm_backend_cmux_create_task: a workspace that never gets a surface fails without a second create"
+  out=$(PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-newtask /tmp/proj' "$ROOT")
+  [ "$out" = 'new-in-other-window new-surface' ] || fail "create did not bind from app-wide post-create tree: $out"
+  [ "$(grep -c $'\x1f''new-workspace' "$dir/log")" = 1 ] || fail 'create retried when result appeared in another window'
+  pass 'cmux create: post-create identity and surface bind across windows without retry'
 }
 
-test_create_task_failed_ack_does_not_wait() {
-  local dir fb status
-  dir="$TMP_ROOT/create-noack"; mkdir -p "$dir/responses"
-  printf '{"workspaces":[]}' > "$dir/responses/1.out"
-  echo 1 > "$dir/responses/2.exit"
-  fb=$(make_cmux_fakebin "$dir")
-  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" FM_CMUX_CREATE_WAIT_SLEEP=0 \
-    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-noack /tmp/proj' "$ROOT" >/dev/null 2>&1
-  status=$?
-  [ "$status" -ne 0 ] || fail "a failed acknowledgement must fail"
-  [ "$(cmux_create_count "$dir/log")" = 1 ] || fail "a failed plain acknowledgement must not be retried"
-  pass "fm_backend_cmux_create_task: a failed plain acknowledgement fails with one create call"
-}
-
-test_create_task_grouped_ack_never_falls_back() {
-  local dir fb out title
-  dir="$TMP_ROOT/create-grouped"; mkdir -p "$dir/responses"
-  title=$(cmux_expected_scoped_title fm-grp)
-  printf '{"workspaces":[]}' > "$dir/responses/1.out"   # duplicate check
-  printf '{"workspaces":[]}' > "$dir/responses/2.out"   # first visibility read: not yet
-  cmux_workspace_list_response "$dir" 3 "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb" "$title"
-  cmux_panes_response "$dir" 4 "cccccccc-2222-2222-2222-cccccccccccc"
-  fb=$(make_cmux_fakebin "$dir")
-  out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" FM_CMUX_CREATE_WAIT_SLEEP=0 \
-    bash -c '. "$0/bin/backends/cmux.sh"
-      fm_cmux_layout_enabled() { return 0; }
-      fm_cmux_layout_create() { echo grouped-create >> "$FM_CMUX_LOG"; return 0; }
-      fm_backend_cmux_workspaces_json() { fm_backend_cmux_cli workspace list --json --id-format uuids; }
-      fm_backend_cmux_create_task fm-grp /tmp/proj' "$ROOT" )
-  [ "$out" = "bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb cccccccc-2222-2222-2222-cccccccccccc" ] || fail "grouped create should resolve, got '$out'"
-  [ "$(grep -c grouped-create "$dir/log")" = 1 ] || fail "one grouped create expected"
-  [ "$(cmux_create_count "$dir/log")" = 0 ] || fail "an acknowledged grouped create must never fall back to a plain create"
-  pass "fm_backend_cmux_create_task: an acknowledged grouped create waits for visibility and never creates a second workspace"
+test_native_tree_rejects_nested_count_and_duplicate_surface() {
+  local dir fb mode out rc
+  for mode in surface-count duplicate-surface pane-mismatch multi-json; do
+    dir="$TMP_ROOT/tree-$mode"; mkdir -p "$dir/responses"
+    cmux_tree_response "$dir" 1 window-1 task task-title task-surface
+    case "$mode" in
+      surface-count) jq '.windows[0].workspaces[0].panes[0].surface_count = 2' "$dir/responses/1.out" > "$dir/responses/1.tmp" ;;
+      duplicate-surface) jq '.windows[0].workspaces += [.windows[0].workspaces[0] | .id = "other" | .panes[0].id = "other-pane"] | .windows[0].workspace_count = 2' \
+        "$dir/responses/1.out" > "$dir/responses/1.tmp" ;;
+      pane-mismatch) jq '.windows[0].workspaces[0].panes[0].surfaces[0].pane_id = "wrong-pane"' \
+        "$dir/responses/1.out" > "$dir/responses/1.tmp" ;;
+      multi-json) cat "$dir/responses/1.out" "$dir/responses/1.out" > "$dir/responses/1.tmp" ;;
+    esac
+    mv "$dir/responses/1.tmp" "$dir/responses/1.out"
+    fb=$(make_cmux_fakebin "$dir")
+    out=$(PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+      bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_all_workspaces_json' "$ROOT" 2>&1)
+    rc=$?
+    [ "$rc" -ne 0 ] || fail "$mode returned a successful inventory status"
+    [ -z "$out" ] || fail "$mode produced a trusted inventory"
+    [ "$(cat "$dir/responses/.count")" = 1 ] || fail "$mode retried a malformed native response"
+  done
+  pass 'cmux native tree: nested counts, ownership, duplicate surfaces, and multiple JSON documents are rejected'
 }
 
 # --- target_ready / capture ---------------------------------------------------
@@ -614,14 +603,14 @@ test_target_ready_checks_expected_label() {
   local dir fb title
   dir="$TMP_ROOT/ready-label-ok"; mkdir -p "$dir/responses"
   title=$(cmux_expected_scoped_title fm-label)
-  cmux_workspace_list_response "$dir" 1 "aaaaaaaa-0000-0000-0000-000000000000" "$title"
+  cmux_tree_response "$dir" 1 window-1 "aaaaaaaa-0000-0000-0000-000000000000" "$title" "bbbbbbbb-1111-1111-1111-111111111111"
   # 2: list-panes --json --id-format uuids -> matching surface
   cmux_panes_response "$dir" 2 "bbbbbbbb-1111-1111-1111-111111111111"
   fb=$(make_cmux_fakebin "$dir")
   PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_target_ready "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111" fm-label' "$ROOT"
   expect_code 0 $? "target_ready should succeed when the workspace title matches the expected label"
-  cmux_assert_call_order "$dir/log" $'\x1f''workspace'$'\x1f''list' $'\x1f''list-panes' \
+  cmux_assert_call_order "$dir/log" $'\x1f''rpc'$'\x1f''system.tree' $'\x1f''list-panes' \
     "target_ready did not check the label before list-panes"
   pass "fm_backend_cmux_target_ready: verifies the workspace title against the expected label first"
 }
@@ -629,7 +618,7 @@ test_target_ready_checks_expected_label() {
 test_target_ready_rejects_label_mismatch() {
   local dir fb status
   dir="$TMP_ROOT/ready-label-mismatch"; mkdir -p "$dir/responses"
-  cmux_workspace_list_response "$dir" 1 "aaaaaaaa-0000-0000-0000-000000000000" "not-the-task"
+  cmux_tree_response "$dir" 1 window-1 "aaaaaaaa-0000-0000-0000-000000000000" "not-the-task" surface-1
   fb=$(make_cmux_fakebin "$dir")
   PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_target_ready "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111" fm-label' "$ROOT"
@@ -708,9 +697,9 @@ test_send_key_recovers_stale_target_by_label() {
   local dir fb title
   dir="$TMP_ROOT/sendkey-stale-target"; mkdir -p "$dir/responses"
   title=$(cmux_expected_scoped_title fm-label)
-  cmux_workspace_list_response "$dir" 1 "cccccccc-2222-2222-2222-222222222222" "$title"
-  cmux_workspace_list_response "$dir" 2 "cccccccc-2222-2222-2222-222222222222" "$title"
-  cmux_panes_response "$dir" 3 "dddddddd-3333-3333-3333-333333333333"
+  cmux_tree_response "$dir" 1 window-1 "cccccccc-2222-2222-2222-222222222222" "$title" "dddddddd-3333-3333-3333-333333333333"
+  cmux_tree_response "$dir" 2 window-1 "cccccccc-2222-2222-2222-222222222222" "$title" "dddddddd-3333-3333-3333-333333333333"
+  cmux_tree_response "$dir" 3 window-1 "cccccccc-2222-2222-2222-222222222222" "$title" "dddddddd-3333-3333-3333-333333333333"
   fb=$(make_cmux_fakebin "$dir")
   PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_send_key "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111" Enter fm-label' "$ROOT"
@@ -1043,27 +1032,23 @@ test_send_text_submit_send_failed_when_target_absent() {
 test_window_of_workspace_finds_window_and_count() {
   local dir fb out
   dir="$TMP_ROOT/win-of-ws"; mkdir -p "$dir/responses"
-  # 1: list-windows --json -> two windows
-  cmux_windows_response "$dir" 1 "e1111111-0000-0000-0000-000000000000" 2 "e2222222-0000-0000-0000-000000000000" 2
-  # 2: workspace list --window e1111111 -> does NOT contain the target
-  cmux_workspace_list_response "$dir" 2 "ffffffff-0000-0000-0000-000000000000" "other"
-  # 3: workspace list --window e2222222 -> contains the target
-  cmux_workspace_list_response "$dir" 3 "aaaaaaaa-0000-0000-0000-000000000000" "the-task"
+  cmux_tree_response "$dir" 1 "e1111111-0000-0000-0000-000000000000" "ffffffff-0000-0000-0000-000000000000" other sf-other
+  jq --arg win "e2222222-0000-0000-0000-000000000000" '
+    .windows += [{id:$win,workspace_count:1,workspaces:[{id:"aaaaaaaa-0000-0000-0000-000000000000",title:"the-task",description:null,panes:[{id:"pane-target",surface_count:1,surface_ids:["sf-target"],surfaces:[{id:"sf-target"}]}]}]}]
+  ' "$dir/responses/1.out" > "$dir/responses/1.tmp" && mv "$dir/responses/1.tmp" "$dir/responses/1.out"
   fb=$(make_cmux_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_window_of_workspace "aaaaaaaa-0000-0000-0000-000000000000"' "$ROOT" )
   [ "$out" = "e2222222-0000-0000-0000-000000000000 1" ] \
     || fail "window_of_workspace should echo the owning window and its matched-list count, got '$out'"
-  cmux_assert_call_order "$dir/log" $'\x1f''list-windows' $'\x1f''workspace'$'\x1f''list'$'\x1f''--json'$'\x1f''--id-format'$'\x1f''uuids'$'\x1f''--window'$'\x1f''e1111111-0000-0000-0000-000000000000' \
-    "window_of_workspace did not list windows before scanning per-window workspaces"
-  pass "fm_backend_cmux_window_of_workspace: walks windows and counts the membership-confirming workspace list"
+  assert_grep $'\x1f''rpc'$'\x1f''system.tree' "$dir/log" "window_of_workspace did not use native tree"
+  pass "fm_backend_cmux_window_of_workspace: resolves the owning window from one native tree"
 }
 
 test_window_of_workspace_empty_when_not_found() {
   local dir fb out
   dir="$TMP_ROOT/win-of-ws-none"; mkdir -p "$dir/responses"
-  cmux_windows_response "$dir" 1 "e1111111-0000-0000-0000-000000000000" 1
-  cmux_workspace_list_response "$dir" 2 "ffffffff-0000-0000-0000-000000000000" "other"
+  cmux_tree_response "$dir" 1 "e1111111-0000-0000-0000-000000000000" "ffffffff-0000-0000-0000-000000000000" other sf-other
   fb=$(make_cmux_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_window_of_workspace "aaaaaaaa-0000-0000-0000-000000000000"' "$ROOT" )
@@ -1089,30 +1074,23 @@ sf=bbbbbbbb-1111-1111-1111-111111111111
 win=eeeeeeee-0000-0000-0000-000000000000
 printf '%s\n' "$*" >> "$d/log"
 case "$1" in
-  list-windows)
-    if [ "$mode" = inventory-error ] || { [ "$mode" = post-error ] && [ -f "$d/attempted" ]; }; then exit 1; fi
-    if [ "$mode" = bad-schema ]; then printf '{}'
-    elif [ "$mode" = empty-windows ]; then printf '[]'
-    else printf '[{"id":"%s"}]' "$win"
-    fi
-    ;;
-  workspace)
-    if [ "$mode" = pre-read-error ] && [ ! -f "$d/created" ]; then exit 1; fi
-    if [ "$mode" = pre-read-malformed ] && [ ! -f "$d/created" ]; then printf '{}'; exit 0; fi
-    if [ "$mode" = empty-workspaces ] || { [ "$mode" = post-empty ] && [ -f "$d/attempted" ]; } \
-      || { [ "$mode" = force-empty ] && [ -f "$d/forced" ]; }; then
-      printf '{"workspaces":[]}'
-      exit 0
-    fi
-    if [ "$mode" = id-only ]; then printf '{"workspaces":[{"id":"other"}]}'; exit 0; fi
-    if [ "$mode" = duplicate ] && [ ! -f "$d/gone" ]; then
-      jq -n --arg id "$ws" --arg t "$(cat "$d/title")" '{workspaces:[{id:$id,title:$t},{id:"duplicate",title:$t}]}'
-      exit 0
-    fi
-    if { [ "$mode" = duplicate ] || [ "$mode" = post-duplicate ]; } && [ -f "$d/gone" ]; then
-      jq -n --arg t "$(cat "$d/title")" '{workspaces:[{id:"duplicate",title:$t}]}'
-      exit 0
-    fi
+  rpc)
+    [ "${2:-}" = system.tree ] || exit 2
+    reads=$(cat "$d/rpc-reads" 2>/dev/null || printf 0)
+    reads=$((reads+1)); printf '%s' "$reads" > "$d/rpc-reads"
+    case "$mode" in
+      inventory-error) exit 1 ;;
+      post-error) [ -f "$d/attempted" ] && exit 1 ;;
+      pre-read-error) [ ! -f "$d/created" ] && exit 1 ;;
+      bad-schema) printf '{}'; exit 0 ;;
+      pre-read-malformed) [ ! -f "$d/created" ] && { printf '{}'; exit 0; } ;;
+      empty-windows) printf '{"windows":[]}'; exit 0 ;;
+      empty-workspaces) printf '{"windows":[{"id":"%s","workspace_count":0,"workspaces":[]}]}' "$win"; exit 0 ;;
+      post-empty) [ -f "$d/attempted" ] && { printf '{"windows":[{"id":"%s","workspace_count":0,"workspaces":[]}]}' "$win"; exit 0; } ;;
+      force-empty) [ -f "$d/forced" ] && { printf '{"windows":[{"id":"%s","workspace_count":0,"workspaces":[]}]}' "$win"; exit 0; } ;;
+      id-only) printf '{"windows":[{"id":"%s","workspace_count":1,"workspaces":[{"id":"other"}]}]}' "$win"; exit 0 ;;
+      no-native) printf 'method_not_found: system.tree' >&2; exit 1 ;;
+    esac
     delayed=0
     case "$mode" in
       launch-*)
@@ -1124,13 +1102,35 @@ case "$1" in
         fi
         ;;
     esac
-    if [ -f "$d/gone" ] || [ "$delayed" = 1 ]; then
-      printf '{"workspaces":[{"id":"other","title":"independent"}]}'
-    elif [ ! -f "$d/last" ] || [ -f "$d/sibling" ]; then
-      jq -n --arg id "$ws" --arg t "$(cat "$d/title")" '{workspaces:[{id:$id,title:$t},{id:"other",title:"independent"}]}'
-    else
-      jq -n --arg id "$ws" --arg t "$(cat "$d/title")" '{workspaces:[{id:$id,title:$t}]}'
+    title=$(cat "$d/title")
+    target=1; other=1; duplicate=0
+    if [ -f "$d/gone" ] || [ "$delayed" = 1 ]; then target=0; fi
+    if [ -f "$d/last" ] && [ ! -f "$d/sibling" ]; then other=0; fi
+    if [ "$target" = 0 ]; then other=1; fi
+    if [ "$mode" = duplicate ] && [ ! -f "$d/gone" ]; then duplicate=1; fi
+    if { [ "$mode" = duplicate ] || [ "$mode" = post-duplicate ]; } && [ -f "$d/gone" ]; then duplicate=1; fi
+    if [ "$mode" = change-before-close ] && [ "$reads" -ge 2 ]; then extra=1
+    elif [ -f "$d/extra-surface" ]; then extra=1
+    else extra=0
     fi
+    if [ "$mode" = launch-surface-timeout ] && [ "$target" = 1 ]; then
+      jq -n --arg win "$win" --arg ws "$ws" --arg title "$title" \
+        '{windows:[{id:$win,workspace_count:1,workspaces:[{id:$ws,title:$title,panes:[]}]}]}'
+      exit 0
+    fi
+    jq -n --arg win "$win" --arg ws "$ws" --arg sf "$sf" --arg title "$title" \
+      --argjson target "$target" --argjson other "$other" --argjson duplicate "$duplicate" \
+      --argjson extra "$extra" --arg mode "$mode" '
+      def node($id;$title;$sf;$extra):
+        {id:$id,title:$title,description:null,
+         panes:[{id:("pane-"+$id),surface_count:(1+$extra),
+           surface_ids:([$sf]+(if $extra == 1 then ["unrelated-surface"] else [] end)),
+           surfaces:([{id:$sf}]+(if $extra == 1 then [{id:"unrelated-surface"}] else [] end))}]};
+      ([if $target == 1 then node($ws;$title;$sf;$extra) else empty end,
+        if $other == 1 then node("other";"independent";"other-surface";0) else empty end,
+        if $duplicate == 1 then node("duplicate";$title;"duplicate-surface";0) else empty end]) as $workspaces
+      | {windows:[{id:$win,workspace_count:(($workspaces|length) + (if $mode == "count-mismatch" or $mode == "duplicate-id" then 1 else 0 end)),
+          workspaces:(if $mode == "duplicate-id" then $workspaces + [$workspaces[0]] else $workspaces end)}]}'
     ;;
   list-panes)
     if [ "$mode" = launch-surface-timeout ]; then
@@ -1227,7 +1227,7 @@ test_create_refuses_unproven_duplicate_check() {
 
 test_liveness_refuses_incomplete_inventory() {
   local dir mode state
-  for mode in empty-workspaces id-only; do
+  for mode in empty-workspaces id-only count-mismatch duplicate-id no-native; do
     dir=$(make_cmux_close_case "liveness-$mode" "$mode")
     state=$(FM_CMUX_CLOSE_DIR="$dir" FM_HOME="$dir/home" FM_ROOT="$ROOT" FM_CMUX_LAYOUT=off \
       PATH="$dir/fakebin:$PATH" bash -c '
@@ -1237,7 +1237,7 @@ test_liveness_refuses_incomplete_inventory() {
       ' _ "$ROOT/bin/backends/cmux.sh")
     assert_equals unreadable "$state" "$mode must not license recovery"
   done
-  pass "cmux liveness: incomplete per-window inventory cannot report a task missing"
+  pass "cmux liveness: incomplete native inventory cannot report a task missing"
 }
 
 test_kill_closes_workspace_directly_when_not_last() {
@@ -1265,7 +1265,7 @@ test_kill_adds_sibling_when_last_in_window() {
 
 test_kill_confirmation_and_refusal() {
   local dir mode
-  for mode in refuse noop error post-error bad-schema inventory-error empty-windows empty-workspaces post-empty force-empty id-only duplicate post-duplicate; do
+  for mode in refuse noop error post-error bad-schema inventory-error empty-windows empty-workspaces post-empty force-empty id-only duplicate post-duplicate count-mismatch duplicate-id no-native change-before-close; do
     dir=$(make_cmux_close_case "kill-$mode" "$mode")
     run_cmux_close_case "$dir" fm-close-task && fail "$mode reported a false successful close"
     case "$mode" in
@@ -1317,7 +1317,7 @@ test_kill_recovers_stale_target_by_label() {
 test_teardown_cmux_retains_unproven_endpoint() {
   local dir mode rc
   command -v tasks-axi >/dev/null 2>&1 || { echo 'skip: tasks-axi not installed'; return; }
-  for mode in refuse noop post-error empty-windows empty-workspaces post-empty force-empty id-only duplicate post-duplicate confirm; do
+  for mode in refuse noop post-error empty-windows empty-workspaces post-empty force-empty id-only duplicate post-duplicate count-mismatch duplicate-id no-native change-before-close confirm; do
     dir=$(make_cmux_close_case "teardown-$mode" "$mode")
     mkdir -p "$dir/project"
     git init -q "$dir/project"
@@ -1345,7 +1345,7 @@ test_teardown_cmux_retains_unproven_endpoint() {
       cmp -s "$dir/meta-before" "$dir/home/state/close-task.meta" || fail "refused teardown changed endpoint metadata"
       assert_equals in_flight "$(tasks-axi show close-task --file "$dir/home/data/backlog.md" | sed -n 's/^  state: *//p' | head -1)" "refused teardown changed its backlog state"
       assert_no_grep 'teardown close-task complete' "$dir/out" "false completion announcement"
-      if [ "$mode" = empty-windows ] || [ "$mode" = empty-workspaces ] || [ "$mode" = id-only ] || [ "$mode" = duplicate ]; then
+      if [ "$mode" = empty-windows ] || [ "$mode" = empty-workspaces ] || [ "$mode" = id-only ] || [ "$mode" = duplicate ] || [ "$mode" = count-mismatch ] || [ "$mode" = duplicate-id ] || [ "$mode" = no-native ] || [ "$mode" = change-before-close ]; then
         assert_no_grep close-workspace "$dir/log" "unproven inventory must stop before close"
       else
         assert_grep close-workspace "$dir/log" "fixture never reached the failing close"
@@ -1363,13 +1363,10 @@ test_list_live_filters_by_title_prefix() {
   other_root="$dir/other-root"; mkdir -p "$other_root"
   title=$(cmux_expected_scoped_title fm-task1)
   other_title=$(cmux_expected_scoped_title fm-task2 "$ROOT" "$other_root")
-  # 1: workspace list --json --id-format uuids -> one in-home task, two unrelated
-  cmux_workspace_list_response "$dir" 1 \
-    "aaaaaaaa-0000-0000-0000-000000000000" "$title" \
-    "dddddddd-8888-8888-8888-888888888888" "$other_title" \
-    "cccccccc-9999-9999-9999-999999999999" "zsh"
-  # 2: list-panes for this home's task1 workspace
-  cmux_panes_response "$dir" 2 "bbbbbbbb-1111-1111-1111-111111111111"
+  cmux_tree_response "$dir" 1 window-1 \
+    "aaaaaaaa-0000-0000-0000-000000000000" "$title" "bbbbbbbb-1111-1111-1111-111111111111" \
+    "dddddddd-8888-8888-8888-888888888888" "$other_title" other-surface \
+    "cccccccc-9999-9999-9999-999999999999" zsh shell-surface
   fb=$(make_cmux_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_list_live' "$ROOT" )
@@ -1421,12 +1418,11 @@ test_ensure_running_returns_immediately_when_already_ok
 test_ensure_running_fails_fast_on_denied_without_launching
 test_ensure_running_fails_fast_on_unauth_without_launching
 test_create_task_refuses_duplicate_label
+test_create_task_refuses_other_window_duplicate
+test_create_task_refuses_native_failure_and_count_mismatch
 test_create_task_creates_and_parses_ids
-test_create_task_waits_for_delayed_visibility
-test_create_task_keeps_invisible_endpoint_without_recreating
-test_create_task_missing_surface_fails_once
-test_create_task_failed_ack_does_not_wait
-test_create_task_grouped_ack_never_falls_back
+test_create_task_binds_in_other_window
+test_native_tree_rejects_nested_count_and_duplicate_surface
 test_target_ready_fails_when_target_absent
 test_target_ready_checks_expected_label
 test_target_ready_rejects_label_mismatch

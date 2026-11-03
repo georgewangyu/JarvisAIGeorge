@@ -1689,6 +1689,12 @@ The controlled output reported `remaining_exact_workspace=0`, `focus_preserved=t
 The integrated refresh ran `bin/fm-test-run.sh tests/fm-backend-cmux.test.sh tests/fm-teardown-endpoint-safety.test.sh tests/fm-cmux-layout.test.sh tests/fm-cmux-reboot-heal.test.sh tests/fm-control.test.sh` and reported `FM_TEST_SUMMARY total=5 failed=0 skipped_gate=0` with 136 passing behavior checks.
 The refused cases retain byte-identical endpoint metadata and the in-flight backlog row without a pending-close marker that could remove them on startup.
 
+### Native app-wide inventory contract (2026-11-02)
+
+The previous multi-call inventory could miss a task in another window or accept a per-window list that disagreed with its declared workspace count. The adapter now calls the native `system.tree` RPC with `all_windows=true` for create preflight and binding, close and teardown absence, and recovery-grade liveness. The installed 0.65.2 server returned one nested window/workspace/pane/surface tree; the reader rejects missing native support, malformed topology, duplicate identities, and inconsistent counts. It projects only lifecycle identities and labels, leaving unrelated URL fields out of its result. The CLI `tree --all` is not used for this gate because it can silently assemble a fallback from separate calls when the server lacks the native method.
+
+The adapter's fake-CLI cases include a scoped title in another window under both layout modes, native-method failure, count mismatch, duplicate IDs, delayed create visibility without a second create, changed ownership or extra surfaces before close, post-close uncertainty, teardown record retention, and liveness `unreadable`. A controlled live check created a uniquely labelled disposable second window and task workspace, proved plain-mode duplicate creation from the original window was refused, closed the exact test task and window, and verified both absent with the original focus restored. The native method supplies a coherent observation at read time; a later external UI change remains a separate concurrency boundary.
+
 Refresh the portable behavior checks with:
 
 ```sh

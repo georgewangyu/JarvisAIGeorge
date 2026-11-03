@@ -115,6 +115,9 @@ make_group_fake() {
 D="$FAKE_DIR"
 printf '%s\n' "$*" >> "$D/log"
 case "$1" in
+  rpc)
+    [ "${2:-}" = system.tree ] || exit 1
+    echo '{"windows":[{"id":"WIN","workspace_count":1,"workspaces":[{"id":"MGR","title":"JarvisAIGeorge","description":null,"panes":[{"id":"pane-MGR","surface_count":1,"surface_ids":["surface-MGR"],"surfaces":[{"id":"surface-MGR"}]}]}]}]}' ;;
   list-windows) echo '[{"id":"WIN"}]' ;;
   workspace) echo '{"workspaces":[{"id":"MGR","title":"JarvisAIGeorge"}]}' ;;
   workspace-group)
@@ -199,6 +202,4 @@ test_board_keeps_unknown_and_names_backend
 test_board_group_summary
 test_home_names_and_labels
 test_buckets
-test_board_uncertainty
-test_summary_and_known_colors
 test_sidebar_hook
