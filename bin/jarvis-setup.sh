@@ -26,8 +26,14 @@
 #                                       after the user approves
 #   bin/jarvis-setup.sh extensions <id>...|none
 #                                       install the extensions the user approved
-#                                       (recommended: george-coding-agent) and
-#                                       record the choice in config/extensions
+#                                       and record each as installed; none
+#                                       declines every known extension
+#   bin/jarvis-setup.sh extensions decline|later <id>...
+#                                       record the user's no (never offered
+#                                       again) or "not now" (offered again after
+#                                       14 days)
+#   bin/jarvis-setup.sh extensions list one line per known extension:
+#                                       <id> <decision> <recommended|-> <summary>
 #   bin/jarvis-setup.sh cmux-check      verify the cmux control socket answers
 #   bin/jarvis-setup.sh update-check    bounded network check: is the home behind
 #                                       origin, is plugin auto-update on. Quiet
@@ -84,8 +90,11 @@ MARKET=jarvis-ai-george
 # Marketplaces a plugin may have been installed from: ours, or the extension's own repo.
 MARKETS="jarvis-ai-george george-coding-agent"
 PLUGINS="jarvis-ai-george"
-# Known extensions offered at first run; the user picks, nothing installs on its own.
-EXTENSIONS="george-coding-agent"
+# Known extensions are the vendored manifests (docs/jarvis-plugins.md "Publishing
+# an extension"); the user picks, nothing installs on its own.
+EXT_DIR="${JARVIS_EXTENSIONS_DIR:-$ROOT/plugins/jarvis-ai-george/extensions}"
+DECISIONS="$CONFIG/extension-decisions"
+LATER_DAYS=14
 DOC="docs/install.md"
 DEFAULT_MANAGER_NAME=JarvisAIGeorge
 
@@ -132,6 +141,19 @@ plugin_installed() {  # <plugin>
 # The plugin CLI of the current harness; only these verbs differ.
 need_cli() { command -v "$HARNESS" >/dev/null 2>&1 || die "$HARNESS is not on PATH"; }
 
+# An extension that arrived with an update can be newer than the tool's copy of
+# the marketplace, so refresh it before installing (Claude: marketplace update;
+# codex: marketplace upgrade). A failed refresh is not fatal: the install then
+# says what is wrong.
+refresh_marketplace() {
+  ensure_marketplace
+  if [ "$HARNESS" = codex ]; then
+    codex plugin marketplace upgrade "$MARKET" >/dev/null 2>&1 || true
+  else
+    claude plugin marketplace update "$MARKET" >/dev/null 2>&1 || true
+  fi
+}
+
 ensure_marketplace() {
   "$HARNESS" plugin marketplace list 2>/dev/null | grep -q "$MARKET" && return 0
   "$HARNESS" plugin marketplace add "$(marketplace_source)" \
@@ -146,11 +168,97 @@ install_plugin() {  # <plugin>
   fi
 }
 
-extensions_chosen() { [ -f "$CONFIG/extensions" ]; }
+# One line per known extension, sorted by id: <id> TAB <1 if recommended, else
+# 0> TAB <one-line summary>. The summary is the manifest's `summary`, else the
+# first sentence of its description.
+extension_rows() {
+  python3 - "$EXT_DIR" <<'PY' 2>/dev/null
+import json, pathlib, re, sys
+for f in sorted(pathlib.Path(sys.argv[1]).glob("*.json")):
+    try:
+        m = json.loads(f.read_text())
+    except ValueError:
+        continue
+    if m.get("core") or not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", str(m.get("id", ""))):
+        continue
+    s = str(m.get("summary") or re.split(r"(?<=[.!?])\s", str(m.get("description", "")).strip())[0])
+    s = " ".join(s.split()).rstrip(".")[:120]
+    print(f"{m['id']}\t{1 if m.get('recommended') is True else 0}\t{s}")
+PY
+}
+
+extension_ids() { extension_rows | cut -f1; }
+
+# The recorded decision for one extension: installed, declined, later, or
+# empty. config/extension-decisions holds "<id> <decision> [<epoch>]" lines. An
+# older home's config/extensions (installed ids, or "none" from when the coding
+# extension was the only one) still counts, and an extension found installed
+# counts as installed.
+extension_decision() {  # <id>
+  local id=$1 k d t rest now
+  if [ -f "$DECISIONS" ]; then
+    while read -r k d t rest; do
+      [ "$k" = "$id" ] || continue
+      if [ "$d" = later ]; then
+        now=$(date +%s)
+        if [ -n "$t" ] && [ $((now - t)) -lt $((LATER_DAYS * 86400)) ]; then printf later; fi
+        return 0
+      fi
+      printf '%s' "$d"
+      return 0
+    done < "$DECISIONS"
+  fi
+  if [ -f "$CONFIG/extensions" ]; then
+    grep -qx "$id" "$CONFIG/extensions" && { printf installed; return 0; }
+    grep -qx none "$CONFIG/extensions" && [ "$id" = george-coding-agent ] && { printf declined; return 0; }
+  fi
+  plugin_installed "$id" && printf installed
+  return 0
+}
+
+record_decision() {  # <id> <installed|declined|later>
+  local tmp
+  mkdir -p "$CONFIG"
+  tmp="$DECISIONS.tmp.$$"
+  { [ -f "$DECISIONS" ] && grep -v "^$1 " "$DECISIONS"
+    if [ "$2" = later ]; then printf '%s later %s\n' "$1" "$(date +%s)"; else printf '%s %s\n' "$1" "$2"; fi
+  } > "$tmp" && mv -f "$tmp" "$DECISIONS"
+}
+
+# First run is "no extension decided yet". After that, a known extension with
+# no decision arrived with an update and is offered once.
+extensions_chosen() {
+  [ -f "$CONFIG/extensions" ] && return 0
+  [ -s "$DECISIONS" ]
+}
+
+extension_offer() {  # <id> <rec> <summary> -> "id (summary, recommended)"
+  if [ "$2" = 1 ]; then printf '%s (%s, recommended)' "$1" "$3"; else printf '%s (%s)' "$1" "$3"; fi
+}
+
+first_run_offer() {
+  local id rec sum out=
+  while IFS=$'\t' read -r id rec sum; do
+    [ -n "$id" ] || continue
+    out="${out:+$out; }$(extension_offer "$id" "$rec" "$sum")"
+  done < <(extension_rows)
+  printf '%s' "$out"
+}
+
+# One JARVIS_NEW_EXTENSION line per known extension with no decision.
+new_extensions() {
+  local id rec sum
+  extensions_chosen || return 0
+  while IFS=$'\t' read -r id rec sum; do
+    [ -n "$id" ] || continue
+    [ -z "$(extension_decision "$id")" ] || continue
+    echo "JARVIS_NEW_EXTENSION: $(extension_offer "$id" "$rec" "$sum"). Ask the user once whether to install it, then run bin/jarvis-setup.sh extensions $id, or extensions decline $id, or extensions later $id. Help: $DOC"
+  done < <(extension_rows)
+}
 
 missing_extensions() {
   local p out=
-  for p in $EXTENSIONS; do
+  for p in $(extension_ids); do
     plugin_installed "$p" || out="$out $p"
   done
   printf '%s' "${out# }"
@@ -203,7 +311,7 @@ cmd_detect() {
   [ "$b" = unset ] && gaps+=("backend choice (cmux tabs or not)")
   p=$(missing_plugins)
   [ -n "$p" ] && gaps+=("plugins: $p")
-  extensions_chosen || gaps+=("extensions not chosen (offer: $EXTENSIONS)")
+  extensions_chosen || gaps+=("extensions not chosen (offer: $(first_run_offer))")
   [ -f "$CONFIG/user-address" ] || gaps+=("how to address the user not asked")
   [ -f "$CONFIG/shortcut" ] || gaps+=("launch shortcut not offered")
   t=$(missing_tools)
@@ -212,6 +320,7 @@ cmd_detect() {
     c=$(cmux_state)
     [ "$c" != ok ] && [ "$c" != absent ] && gaps+=("cmux socket ($c)")
   fi
+  new_extensions
   [ "${#gaps[@]}" -eq 0 ] && return 0
   local joined g
   joined=
@@ -269,11 +378,11 @@ cmd_status() {
   local e
   e=$(missing_extensions)
   if ! extensions_chosen; then
-    echo "JARVIS_SETUP: MISSING extension choice. Ask which to install (recommended: george-coding-agent, the coding worker, reviewer, planning and review skills); after a yes run bin/jarvis-setup.sh extensions george-coding-agent, or extensions none"
+    echo "JARVIS_SETUP: MISSING extension choice. Ask which to install: $(first_run_offer). After a yes run bin/jarvis-setup.sh extensions <id>..., or extensions none"
   elif [ -n "$e" ]; then
     echo "info: extensions not installed: $e (offer when work needs one: bin/jarvis-setup.sh extensions <id>)"
   else
-    echo "ok: extensions $EXTENSIONS"
+    echo "ok: extensions $(extension_ids | tr '\n' ' ' | sed 's/ $//')"
   fi
   if [ -f "$CONFIG/user-address" ]; then
     echo "ok: address $(cat "$CONFIG/user-address")"
@@ -340,23 +449,53 @@ cmd_plugins() {
   echo "ok: plugins $PLUGINS (restart $HARNESS in this folder to load them)"
 }
 
+known_extension() {  # <id>
+  local known
+  known=" $(extension_ids | tr '\n' ' ')"
+  case "$known" in *" $1 "*) return 0 ;; esac
+  die "unknown extension '$1' (known:${known% })"
+}
+
 cmd_extensions() {
-  [ "$#" -gt 0 ] || die "usage: extensions <id>...|none"
+  [ "$#" -gt 0 ] || die "usage: extensions <id>...|none|list|decline <id>...|later <id>..."
   mkdir -p "$CONFIG"
-  if [ "$1" = none ]; then
-    echo none > "$CONFIG/extensions"
-    echo "ok: no extensions (install one later with bin/jarvis-setup.sh extensions <id>)"
-    return 0
-  fi
+  local id rec sum verb d
+  case "$1" in
+    none)
+      for id in $(extension_ids); do
+        [ "$(extension_decision "$id")" = installed ] || record_decision "$id" declined
+      done
+      echo "ok: no extensions (install one later with bin/jarvis-setup.sh extensions <id>)"
+      return 0 ;;
+    list)
+      while IFS=$'\t' read -r id rec sum; do
+        [ -n "$id" ] || continue
+        d=$(extension_decision "$id")
+        if [ "$rec" = 1 ]; then rec=recommended; else rec=-; fi
+        printf '%s %s %s %s\n' "$id" "${d:-undecided}" "$rec" "$sum"
+      done < <(extension_rows)
+      return 0 ;;
+    decline|later)
+      verb=$1
+      shift
+      [ "$#" -gt 0 ] || die "usage: extensions $verb <id>..."
+      d=declined
+      [ "$verb" = later ] && d=later
+      for id in "$@"; do known_extension "$id"; record_decision "$id" "$d"; done
+      if [ "$d" = declined ]; then
+        echo "ok: declined $* (not offered again; install later with bin/jarvis-setup.sh extensions <id>)"
+      else
+        echo "ok: offered again in $LATER_DAYS days: $*"
+      fi
+      return 0 ;;
+  esac
   need_cli
-  local id
+  for id in "$@"; do known_extension "$id"; done
+  refresh_marketplace
   for id in "$@"; do
-    case " $EXTENSIONS " in *" $id "*) ;; *) die "unknown extension '$id' (known: $EXTENSIONS)" ;; esac
-    ensure_marketplace
     plugin_installed "$id" || install_plugin "$id" \
       || die "plugin install $id failed (help: $DOC#plugins-did-not-install)"
-    grep -qx "$id" "$CONFIG/extensions" 2>/dev/null || echo "$id" >> "$CONFIG/extensions"
-    sed -i.bak '/^none$/d' "$CONFIG/extensions" && rm -f "$CONFIG/extensions.bak"
+    record_decision "$id" installed
   done
   if [ "$HARNESS" = codex ]; then
     echo "ok: extensions installed: $* (new workers load them; restart codex here to use their skills in this session)"

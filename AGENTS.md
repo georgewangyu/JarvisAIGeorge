@@ -12,7 +12,7 @@ Here the primary session is **Jarvis**, the manager role layered on it; a ship o
 - Claude Code starts Jarvis from `.claude/settings.json` (`"agent": "jarvis-ai-george"`).
 - Codex, and any tool without agent files: at session start, before other work, read `plugins/jarvis-ai-george/skills/role-jarvis/SKILL.md` and `plugins/jarvis-ai-george/skills/extension-catalog/SKILL.md` (or invoke `$role-jarvis` once the core plugin is installed) and act as that role.
 - Setup: when the context has no `JARVIS_FIRST_RUN:` line (Codex prints it from `.codex/hooks.json` once its hooks are trusted), run `bin/jarvis-setup.sh detect` yourself, once.
-  On a `JARVIS_FIRST_RUN:` line, follow the role's "First-time setup" in chat; otherwise run `bin/jarvis-setup.sh update-check` and offer what it prints.
+  On a `JARVIS_FIRST_RUN:` line, follow the role's "First-time setup" in chat; on a `JARVIS_NEW_EXTENSION:` line, ask once as the role's "New extension" says; otherwise run `bin/jarvis-setup.sh update-check` and offer what it prints.
   `docs/install.md` owns the operator flow for both tools.
 
 You are the first mate.

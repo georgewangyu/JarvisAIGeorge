@@ -139,11 +139,12 @@ Verify on a personal laptop (Codex is not run on the work machine): whether Code
 ## Writing an extension
 
 1. A repo with `jarvis-build.json`, `jarvis-extension.json` (schema 1), `agents-src/`, `skills/`, and a copy of `tools/jarvis-build.py`.
-2. The manifest: `id`, `name`, `schema`, `version`, `description`, `repo`, `agents` (`name`, `summary`, `dispatch_when`), `skills`, `requires`. No tool-specific fields. Keep `relies_on_core` empty: an extension must work alone.
+2. The manifest: `id`, `name`, `schema`, `version`, `description`, `repo`, `agents` (`name`, `summary`, `dispatch_when`), `skills`, `requires`, plus two optional offer fields: `summary` (the one line Jarvis shows when it offers the extension; default the first sentence of `description`) and `recommended: true` (flagged as recommended in the offer). No tool-specific fields. Keep `relies_on_core` empty: an extension must work alone.
 3. Skill split: core holds only what the manager itself uses. Everything a worker uses lives in its extension. Mention a skill from another plugin only as optional ("if installed").
 4. In this repo, classify every new Markdown or text file in `docs/documentation-audiences.json` (the inherited doc-audience check fails otherwise).
-5. Add the repo to `peers` in this repo's `jarvis-build.json` and run `--fetch` so the catalog and the marketplace list it.
+5. Add the repo to `peers` in this repo's `jarvis-build.json` and run `--fetch` so the catalog and the marketplace list it. The build bumps core's version (the vendored manifest is a plugin file), so the update reaches installed homes.
 6. Keep within the skill listing budget above: give every agent a unique name (its role skill is `role-<agent>`), a one-line `summary` and `dispatch_when` for the catalog, list only the skills the agents preload or that must be auto-discovered, keep descriptions short, and let the generated router index the rest. A new extension with a hundred skills costs the manager one catalog line per agent.
+7. What users see. Homes that pull the update get, at their next session start, one `JARVIS_NEW_EXTENSION: <id> (<summary>)` line (Claude Code: the SessionStart hook; codex: `.codex/hooks.json`, or the `AGENTS.md` fallback when its hooks are not trusted). The manager asks once. `bin/jarvis-setup.sh extensions <id>` refreshes the marketplace (`claude plugin marketplace update`, or `codex plugin marketplace upgrade`), installs (`claude plugin install`, or `codex plugin add`) and records `installed`. `extensions decline <id>` and `extensions later <id>` (offered again after 14 days) record the no. Decisions live in the home's gitignored `config/extension-decisions`, one per extension id. A first run offers every known extension from the manifests in one setup line.
 
 ## What loads where (Claude Code, verified)
 

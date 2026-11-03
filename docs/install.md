@@ -22,7 +22,7 @@ Using Codex instead: the same three lines with `codex` in place of `claude`. See
 | 3 | Use cmux tabs for workers? | Jarvis | Yes for a Jarvis tab plus a Workers group with a live board; no for tmux or auto |
 | 4 | What should Jarvis call you? (default: no special address) | Jarvis | A name, or nothing for plain "you". Stored in the home's gitignored `config/user-address` |
 | 5 | Add a launch shortcut? Name (default `jarvis`) and the folder it starts in | Jarvis | Yes writes a marked alias block to `~/.zshrc` and `~/.bashrc`; see "Launch shortcut" |
-| 6 | Which extensions to install (coding extension recommended) | Jarvis | Yes installs `george-coding-agent` (coding worker, read-only reviewer, planning, spec and review skills) |
+| 6 | Which extensions to install (listed from the extension manifests, each with its one-line summary; the coding extension is recommended) | Jarvis | Yes installs the ones you pick, for example `george-coding-agent` (coding worker, read-only reviewer, plan, build, review and ship skills). Each choice is recorded in `config/extension-decisions` |
 | 7 | Which missing tools to install, one command each | Jarvis | Approve each. Jarvis installs nothing without a yes |
 | 8 | cmux socket access, only if the check fails | Jarvis | The one manual step below |
 
@@ -102,6 +102,7 @@ An update never breaks a session that is already running:
 
 - **Home hooks.** Every hook entry in `.claude/settings.json`, `.codex/hooks.json` and the `jarvis-launch` settings calls `bin/hook <script>`. At session start it pins the session to a snapshot of the home's hook code at the current commit (`state/hook-releases/<commit>/`), and every later hook of that session runs that snapshot with the live home's state and config. After a `git pull`, running sessions keep their code; a new session pins the new commit. Snapshots older than 3 days go once no live session uses them (`JARVIS_HOOK_KEEP_DAYS`).
 - **Plugins.** Every plugin change ships under a new version, and Claude Code keeps the old version folder for sessions still using it (`docs/jarvis-plugins.md`).
+- **New extensions.** When an update brings an extension you never decided on, Jarvis asks once at the next session start ("<id> is new: <summary>. Install it?"). Yes installs it, no is remembered, "later" asks again in 14 days. `bin/jarvis-setup.sh extensions list` shows every decision.
 - **Notice.** An old session shows "Jarvis was updated. Restart to load it." once, at its next prompt. Restart (or `--resume`) to load the update; a `/compact` keeps the old code. Turn it off with `JARVIS_UPDATE_NOTICE=off`.
 
 ## Manager write guard

@@ -81,7 +81,7 @@ test_codex_install_commands() {
   printf '%s\n' "$calls" | grep -qx 'plugin add george-coding-agent@jarvis-ai-george' \
     || fail "codex: must install with codex plugin add <plugin>@jarvis-ai-george: '$calls'"
   printf '%s\n' "$calls" | grep -q 'plugin install' && fail "codex: must not use the Claude install verb: '$calls'"
-  grep -qx george-coding-agent "$h/config/extensions" || fail "codex: the choice must be recorded"
+  grep -qx "george-coding-agent installed" "$h/config/extension-decisions" || fail "codex: the choice must be recorded"
   : > "$bin/codex.calls"
   PATH="$bin:$PATH" JARVIS_HARNESS=codex CODEX_HOME="$x" FM_HOME="$h" "$SETUP" plugins >/dev/null || fail "codex plugins must succeed"
   grep -qx 'plugin add jarvis-ai-george@jarvis-ai-george' "$bin/codex.calls" || fail "codex: plugins must add the core plugin"

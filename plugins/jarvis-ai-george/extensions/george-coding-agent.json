@@ -2,8 +2,10 @@
   "schema": 1,
   "id": "george-coding-agent",
   "name": "GeorgeCodingAgent",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Coding agent for Claude Code and other tools: a coding worker, a read-only reviewer, and the plan, build, verify, review and ship skills they use. Works on its own.",
+  "summary": "a coding worker, a read-only reviewer, and plan, build, review and ship skills",
+  "recommended": true,
   "repo": "georgewangyu/GeorgeCodingAgent",
   "license": "MIT",
   "author": {
