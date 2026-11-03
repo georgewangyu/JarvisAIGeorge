@@ -4,12 +4,12 @@ This is the supervisor contract for primary firstmates and persistent secondmate
 A ship or scout worker launched by Firstmate into a worktree of this repository follows the current worker role contract at the start of its `FIRSTMATE_OP: v1 launch-brief`, including the exact steering inbox named there; it does not become a supervisor by loading this file.
 Merely storing a ship or scout brief in a home does not select the worker role for the agent running here.
 
-## Jarvis (JarvisAIGeorge homes)
+## Manager (JarvisAIGeorge homes)
 
 JarvisAIGeorge is a fork of [FirstMate](https://github.com/kunchenguid/firstmate); this file is FirstMate's contract and stays authoritative.
-Here the primary session is **Jarvis**, the manager role layered on it; a ship or scout worker following its launch brief ignores this section.
+Here the primary session is the manager, named **JarvisAIGeorge** unless `config/manager-name` says otherwise, layered on it; a ship or scout worker following its launch brief ignores this section.
 
-- Claude Code starts Jarvis from `.claude/settings.json` (`"agent": "jarvis-ai-george"`).
+- Claude Code starts the manager from `.claude/settings.json` (`"agent": "jarvis-ai-george"`).
 - Codex, and any tool without agent files: at session start, before other work, read `plugins/jarvis-ai-george/skills/role-jarvis/SKILL.md` and `plugins/jarvis-ai-george/skills/extension-catalog/SKILL.md` (or invoke `$role-jarvis` once the core plugin is installed) and act as that role. Plain `codex` here is fine; from any other folder only `bin/jarvis-launch --codex` (the `jarvis` shortcut) sets `JARVIS_HOME` and `FM_HOME`, and the role says so in its first reply when they are missing.
 - Setup: when the context has no `JARVIS_FIRST_RUN:` line (Codex prints it from `.codex/hooks.json` once its hooks are trusted), run `bin/jarvis-setup.sh detect` yourself, once.
   On a `JARVIS_FIRST_RUN:` line, follow the role's "First-time setup" in chat; otherwise run `bin/jarvis-setup.sh update-check` and offer what it prints.

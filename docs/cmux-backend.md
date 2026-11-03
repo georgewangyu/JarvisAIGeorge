@@ -143,7 +143,7 @@ Without it the adapter behaves exactly as described above.
 ```
 
 - **Manager tab.** The first layout spawn records the caller's cmux workspace in `state/.cmux-manager-ws`, renames it to the home name, pins it, colors it, and keeps it right before its Workers group.
-  The home name is `config/cmux-home-name` when present, else `JarvisAIGeorge` for a primary and `Friday <N> · <Charter>` for a secondmate home.
+  The home name is `config/cmux-home-name` when present, else `config/manager-name` (set with `bin/jarvis-setup.sh manager-name <name>`), else `JarvisAIGeorge` for a primary, and `Friday <N> · <Charter>` for a secondmate home. The tab is named at session start for Claude Code and Codex alike (`bin/fm-cmux-claim-manager.sh`, run by both SessionStart hooks and by `bin/jarvis-launch`), not only when the first worker spawns.
   N is the home's position in its local parent's `data/secondmates.md` (left out when the parent cannot be read), and Charter is `config/cmux-charter-name` or the secondmate id in title case.
 - **Workers group.** One anchor-only cmux workspace group per home and window, named `<home>: Workers`, created under a home-local lock and an idempotency key.
   Task workspaces are created inside it with `--group`.

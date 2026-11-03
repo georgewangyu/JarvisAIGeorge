@@ -1,4 +1,4 @@
-# Jarvis plugins: core and extensions
+# JarvisAIGeorge plugins: core and extensions
 
 JarvisAIGeorge ships a core plugin, and each extension (coding today) ships as its own plugin in its own repo.
 Both install with the coding tool's own plugin commands. There is no custom installer.
@@ -84,7 +84,7 @@ One source per piece, one build script per repo, and generated adapters that CI 
 Every coding tool shows the model a list of installed skills with their descriptions, and that list has a budget.
 Claude Code 2.1.316 gives it about 1% of the context window in characters (about 8,000 at 200K tokens; `skillListingBudgetFraction` and `skillListingMaxDescChars` in settings) and cuts descriptions when the list is over.
 Codex CLI 0.166.0 strips every description and omits skills when its skills context budget is exceeded.
-The user's other plugins share the same budget, so each Jarvis plugin keeps its share small and fixed.
+The user's other plugins share the same budget, so each JarvisAIGeorge plugin keeps its share small and fixed.
 This is a different limit from the project-document byte budget, which truncates `AGENTS.md` (see `tests/fm-agents-md-size.test.sh`).
 
 Routing has two levels, and each launch shape has its own budget, so adding extensions (a video agent, a writing agent, each with a hundred skills) never runs into a shared total.

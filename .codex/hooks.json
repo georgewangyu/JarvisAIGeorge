@@ -18,6 +18,15 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -lc 'cat >/dev/null 2>&1 || true; root=$(pwd -P) || exit 0; [ -x \"$root/bin/fm-cmux-claim-manager.sh\" ] || exit 0; [ -f \"$root/.codex/hooks.json\" ] || exit 0; exec \"$root/bin/fm-cmux-claim-manager.sh\"'",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PreToolUse": [

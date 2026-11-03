@@ -84,6 +84,10 @@ PY
   printf '%s' "$out"
 }
 
+# Name, pin and color the manager tab in cmux now, for either tool; a Codex
+# session started outside the home runs none of the home's hooks.
+[ "$print_settings" = 1 ] || "$SCRIPT_DIR/fm-cmux-claim-manager.sh" || true
+
 case "$harness" in
   claude)
     command -v claude >/dev/null 2>&1 || { echo "jarvis-launch: claude is not on PATH (see docs/install.md)" >&2; exit 127; }

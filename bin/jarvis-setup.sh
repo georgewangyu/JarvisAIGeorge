@@ -42,6 +42,10 @@
 #                                       the undo command
 #   bin/jarvis-setup.sh shortcut remove [--name N] [--rc FILE]...
 #   bin/jarvis-setup.sh shortcut none   record "no shortcut" so setup stops asking
+#   bin/jarvis-setup.sh manager-name <name>|default
+#                                       the manager's own name (default
+#                                       JarvisAIGeorge), in the gitignored
+#                                       config/manager-name; also names the cmux tab
 #   bin/jarvis-setup.sh address <name>|none
 #                                       how Jarvis addresses the user, in the
 #                                       gitignored config/user-address (none: no
@@ -233,6 +237,7 @@ backend_explain() {
 cmd_status() {
   local b p t c
   echo "ok: harness $HARNESS"
+  echo "ok: manager name $(manager_name)$([ -f "$CONFIG/manager-name" ] && printf ' (config/manager-name)' || printf ' (default)')"
   b=$(backend_choice)
   if [ "$b" = unset ]; then
     echo "JARVIS_SETUP: MISSING backend choice (ask the user: use cmux tabs? then bin/jarvis-setup.sh backend cmux|tmux|auto)"
@@ -258,7 +263,7 @@ cmd_status() {
   if [ -f "$CONFIG/user-address" ]; then
     echo "ok: address $(cat "$CONFIG/user-address")"
   else
-    echo "JARVIS_SETUP: MISSING address. Ask \"What should Jarvis call you?\" (default: no special address); record it with bin/jarvis-setup.sh address <name>|none"
+    echo "JARVIS_SETUP: MISSING address. Ask \"What should $(manager_name) call you?\" (default: no special address); record it with bin/jarvis-setup.sh address <name>|none"
   fi
   if [ -f "$CONFIG/shortcut" ]; then
     echo "ok: shortcut $(cat "$CONFIG/shortcut")"
@@ -345,13 +350,34 @@ cmd_extensions() {
   fi
 }
 
+# The manager's name: config/manager-name, else JarvisAIGeorge. The manager,
+# the cmux manager tab (bin/backends/cmux-layout.sh) and setup output use it.
+manager_name() {
+  local n=""
+  [ -f "$CONFIG/manager-name" ] && IFS= read -r n < "$CONFIG/manager-name"
+  printf '%s' "${n:-JarvisAIGeorge}"
+}
+
+cmd_manager_name() {
+  [ "$#" -ge 1 ] || die "usage: manager-name <name>|default"
+  local v="$*"
+  case "$v" in *$'\n'*|'') die "manager name must be one non-empty line" ;; esac
+  mkdir -p "$CONFIG"
+  if [ "$v" = default ]; then
+    rm -f "$CONFIG/manager-name"
+  else
+    printf '%s\n' "$v" > "$CONFIG/manager-name"
+  fi
+  echo "ok: the manager is called $(manager_name) (restart the session to load the new name)"
+}
+
 cmd_address() {
   [ "$#" -ge 1 ] || die "usage: address <name>|none"
   mkdir -p "$CONFIG"
   local v="$*"
   case "$v" in *$'\n'*) die "address must be one line" ;; esac
   printf '%s\n' "$v" > "$CONFIG/user-address"
-  if [ "$v" = none ]; then echo "ok: no special address (Jarvis says \"you\")"; else echo "ok: Jarvis will call you $v"; fi
+  if [ "$v" = none ]; then echo "ok: no special address ($(manager_name) says \"you\")"; else echo "ok: $(manager_name) will call you $v"; fi
 }
 
 shortcut_rcs() {  # prints the rc files to edit, one per line (given or the defaults)
@@ -463,7 +489,7 @@ cmd_update_check() {
     echo "JARVIS_UPDATE: could not reach origin to check for updates (skipped; offline is fine)"
   fi
   if [ "$HARNESS" = claude ] && ! autoupdate_decided; then
-    echo "JARVIS_UPDATE: plugin auto-update is not set. Ask once whether Claude Code should update the Jarvis plugins at startup; record the answer with bin/jarvis-setup.sh plugin-autoupdate on|off (update now instead: claude plugin marketplace update $MARKET)"
+    echo "JARVIS_UPDATE: plugin auto-update is not set. Ask once whether Claude Code should update the JarvisAIGeorge plugins at startup; record the answer with bin/jarvis-setup.sh plugin-autoupdate on|off (update now instead: claude plugin marketplace update $MARKET)"
   fi
 }
 
@@ -519,5 +545,6 @@ case "${1:-}" in
   plugin-autoupdate) shift; cmd_plugin_autoupdate "$@" ;;
   shortcut) shift; cmd_shortcut "$@" ;;
   address) shift; cmd_address "$@" ;;
+  manager-name) shift; cmd_manager_name "$@" ;;
   *) awk 'NR>1 && !/^#/ {exit} NR>1 {sub(/^# ?/, ""); print}' "$0"; exit 2 ;;
 esac

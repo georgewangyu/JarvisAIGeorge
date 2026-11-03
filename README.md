@@ -50,11 +50,11 @@ git clone https://github.com/georgewangyu/JarvisAIGeorge ~/jarvis
 cd ~/jarvis && claude
 ```
 
-Trust the folder, then answer Jarvis in chat: cmux tabs or not, what to call you, whether to add a launch shortcut, which extensions to install (the coding extension is recommended), and which missing tools to install. Jarvis installs nothing and edits no shell file without your yes.
+Trust the folder, then answer JarvisAIGeorge in chat: cmux tabs or not, what to call you, whether to add a launch shortcut, which extensions to install (the coding extension is recommended), and which missing tools to install. JarvisAIGeorge installs nothing and edits no shell file without your yes.
 With the shortcut, type `jarvis` to start it from your own workspace folder, so that folder's `CLAUDE.md` or `AGENTS.md` applies too ([Launch shortcut](docs/install.md#launch-shortcut)).
 The full steps, the checklist and troubleshooting for each manual step are in [`docs/install.md`](docs/install.md).
 
-Codex works too: the same three lines with `codex` in place of `claude`. Trust the folder and its hooks, and Jarvis asks the same questions. What differs (role from a skill, plugins installed on your yes, reviewer read-only by instruction) and a test checklist: [Using Codex](docs/install.md#using-codex).
+Codex works too: the same three lines with `codex` in place of `claude`. Trust the folder and its hooks, and JarvisAIGeorge asks the same questions. What differs (role from a skill, plugins installed on your yes, reviewer read-only by instruction) and a test checklist: [Using Codex](docs/install.md#using-codex).
 
 The coding extension also works alone ([GeorgeCodingAgent](https://github.com/georgewangyu/GeorgeCodingAgent)). Plugins per tool, the build and the extension format: [`docs/jarvis-plugins.md`](docs/jarvis-plugins.md).
 
@@ -75,7 +75,7 @@ Backend-specific setup belongs in the linked documentation below.
 - [`docs/jarvisharness.md`](docs/jarvisharness.md) - public fork baseline, boundary, and adaptation plan.
 - [`docs/install.md`](docs/install.md) - install in three lines, the first-run prompts, checklist and troubleshooting.
 - [`docs/startup-warnings.md`](docs/startup-warnings.md) - startup warnings sorted by owner (this project, your config, third-party plugins, optional services, fleet readiness).
-- [`docs/jarvis-plugins.md`](docs/jarvis-plugins.md) - the Jarvis core plugin, extensions, install per tool, and the build.
+- [`docs/jarvis-plugins.md`](docs/jarvis-plugins.md) - the JarvisAIGeorge core plugin, extensions, install per tool, and the build.
 - [`docs/architecture.md`](docs/architecture.md) - inherited FirstMate architecture that still describes much of the current codebase.
 - [`docs/configuration.md`](docs/configuration.md) - current configuration surfaces inherited from FirstMate.
 - [`docs/tmux-backend.md`](docs/tmux-backend.md) - tmux backend setup and limits.

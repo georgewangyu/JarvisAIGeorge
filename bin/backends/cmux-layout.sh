@@ -52,6 +52,10 @@ fm_cmux_layout_secondmate_id() {
 fm_cmux_layout_home_name() {
   local f="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}/cmux-home-name" n="" sm num charter
   [ -f "$f" ] && IFS= read -r n < "$f"
+  if [ -z "$n" ] && [ -z "$(fm_cmux_layout_secondmate_id)" ]; then
+    f="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}/manager-name"
+    [ -f "$f" ] && IFS= read -r n < "$f"
+  fi
   if [ -z "$n" ]; then
     sm=$(fm_cmux_layout_secondmate_id)
     if [ -n "$sm" ]; then
@@ -184,6 +188,19 @@ fm_cmux_layout_place_manager() {  # <manager-ws> <window> [<group-ref>]
   [ -n "$gid" ] || return 0
   anchor=$(fm_cmux_layout_groups "$w" | jq -r --arg g "$gid" '.groups[]? | select(.ref == $g) | .anchor_workspace_ref // empty' 2>/dev/null)
   [ -n "$anchor" ] && fm_backend_cmux_cli reorder-workspace --workspace "$ws" --before "$anchor" --window "$w" >/dev/null 2>&1
+  return 0
+}
+
+# Session start (any harness): name, pin and color the manager tab without
+# creating the Workers group, which the first spawn creates. Best effort.
+fm_cmux_layout_claim_manager() {
+  local ws w gid
+  fm_cmux_layout_enabled || return 0
+  ws=$(fm_cmux_layout_manager_ws 2>/dev/null) || return 0
+  w=$(fm_cmux_layout_window_of "$ws" 2>/dev/null)
+  [ -n "$w" ] || return 0
+  gid=$(fm_cmux_layout_find_group "$w" 2>/dev/null)
+  fm_cmux_layout_place_manager "$ws" "$w" "$gid" >/dev/null 2>&1
   return 0
 }
 
