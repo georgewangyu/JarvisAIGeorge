@@ -75,7 +75,9 @@ puts YAML.load_file(ARGV[0]).fetch("jobs").fetch(ARGV[1]).fetch("timeout-minutes
 # one-off number the policy removed.
 FAST_TIER_JOBS='test-coverage invariants tests-timing-aggregate'
 NORMAL_TIER_JOBS='lint tests-portable-parallel-1 tests-portable-parallel-2 tests-portable-serial macos-stock-bash'
-HEAVY_TIER_JOBS='tests-herdr'
+# The only heavy-tier job was the real-Herdr lane, removed in JarvisAIGeorge
+# (docs/jarvisharness.md "CI trim"); the tier stays defined and empty.
+HEAVY_TIER_JOBS=''
 
 # Print the one timeout every listed job shares; fail on any disagreement.
 tier_timeout() {  # <tier> <job>...
@@ -158,8 +160,8 @@ test_every_job_belongs_to_exactly_one_timeout_tier() {
   [ "$actual" = "$expected" ] \
     || fail "ci.yml jobs and the timeout tiers disagree; every job must join one tier"$'\n'"workflow: $(printf '%s' "$actual" | tr '\n' ' ')"$'\n'"tiers: $(printf '%s' "$expected" | tr '\n' ' ')"
   distinct=$(for job in $expected; do job_timeout "$job"; done | LC_ALL=C sort -u | wc -l | tr -d ' ')
-  [ "$distinct" = 3 ] \
-    || fail "ci.yml must carry exactly three distinct job timeouts (fast, normal, heavy), got $distinct"
+  [ "$distinct" = 2 ] \
+    || fail "ci.yml must carry exactly two distinct job timeouts (fast, normal; the heavy real-Herdr lane is trimmed), got $distinct"
   pass "every ci.yml job belongs to one of the three timeout tiers"
 }
 
@@ -191,32 +193,11 @@ test_normal_tier_shares_one_budget() {
 # Heavy tier: Herdr alone carries a job-level last-resort backstop above the
 # normal tier, while its family-run step owns a tighter tripwire so the
 # always() cleanup and timing upload still run after a hang.
-test_heavy_tier_keeps_a_step_tripwire_under_a_job_backstop() {
-  local normal heavy step
-  # shellcheck disable=SC2086
-  normal=$(tier_timeout normal $NORMAL_TIER_JOBS) || exit 1
-  # shellcheck disable=SC2086
-  heavy=$(tier_timeout heavy $HEAVY_TIER_JOBS) || exit 1
-  [ "$heavy" -gt "$normal" ] \
-    || fail "heavy tier backstop ($heavy) must exceed the normal tier ($normal)"
-  [ "$heavy" -ge 60 ] && [ "$heavy" -le 75 ] \
-    || fail "heavy tier backstop must stay a 60-75 minute last resort, got $heavy"
-  step=$(ruby -ryaml -e '
-steps = YAML.load_file(ARGV[0]).fetch("jobs").fetch(ARGV[1]).fetch("steps")
-index = steps.index { |s| s["id"] == "run-real-herdr-family" }
-raise "no run-real-herdr-family step" unless index
-teardown = steps.index { |s| s["id"] == "cleanup-herdr-lab-sessions" }
-raise "no cleanup-herdr-lab-sessions step" unless teardown
-raise "teardown must follow the family-run step" unless teardown > index
-raise "teardown must run under always()" unless steps[teardown]["if"].to_s.strip == "always()"
-puts steps[index].fetch("timeout-minutes", "none")
-' "$CI_WORKFLOW" tests-herdr) || fail "could not read the Herdr family-run step"
-  case "$step" in ''|*[!0-9]*) fail "the Herdr family-run step needs its own timeout-minutes, got $step" ;; esac
-  [ "$step" = 20 ] \
-    || fail "the Herdr family-run step must be the 20-minute tripwire, got $step"
-  [ "$step" -lt "$heavy" ] \
-    || fail "the Herdr step tripwire ($step) must stay below the job backstop ($heavy)"
-  pass "Herdr keeps a $step minute step tripwire under a $heavy minute job backstop"
+test_heavy_tier_is_empty_without_the_herdr_lane() {
+  ruby -ryaml -e 'exit(YAML.load_file(ARGV[0]).fetch("jobs").key?("tests-herdr") ? 1 : 0)' "$CI_WORKFLOW" \
+    || fail "the real-Herdr job is trimmed in this fork; re-adding it needs a heavy-tier entry and a docs/jarvisharness.md update"
+  [ -z "$HEAVY_TIER_JOBS" ] || fail "no heavy-tier job is expected without the real-Herdr lane"
+  pass "the heavy timeout tier is empty because the real-Herdr lane is trimmed"
 }
 
 test_ci_matrices_match_executable_partitions() {
@@ -257,4 +238,4 @@ test_every_job_has_a_finite_timeout
 test_every_job_belongs_to_exactly_one_timeout_tier
 test_fast_tier_shares_one_short_tripwire
 test_normal_tier_shares_one_budget
-test_heavy_tier_keeps_a_step_tripwire_under_a_job_backstop
+test_heavy_tier_is_empty_without_the_herdr_lane

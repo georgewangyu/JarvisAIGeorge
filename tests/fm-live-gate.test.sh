@@ -181,7 +181,9 @@ test_gate_lets_a_guard_drive_the_real_fleet_scripts_under_a_gate_marker() {
 
 test_every_live_guard_is_wired_to_the_shared_gate() {
   local script out listing checked=0
-  listing=$("$ROOT/bin/fm-test-run.sh" --family live-harness-optin --list) \
+  # Every live suite in the repo, including the ones the JarvisAIGeorge CI trim
+  # skips: the guard contract holds for each file that exists.
+  listing=$(FM_TEST_RUN_NO_JARVIS_TRIM=1 "$ROOT/bin/fm-test-run.sh" --family live-harness-optin --list) \
     || fail "could not list the live-harness family"
   while IFS= read -r script; do
     [ -n "$script" ] || continue

@@ -720,6 +720,8 @@ test_treehouse_lease_check_follows_resolved_backend() {
   # backend that relies on treehouse for worktrees.
   case_dir="$TMP_ROOT/herdr-old-treehouse"
   mkdir -p "$case_dir/home/config"
+  # A treehouse-backed worktree requirement; this fork defaults to shared-checkout.
+  printf 'worktree\n' > "$case_dir/home/config/workspace-isolation"
   printf '%s\n' manual > "$case_dir/home/config/backlog-backend"
   printf '%s\n' herdr > "$case_dir/home/config/backend"
   fakebin=$(make_fake_toolchain_no_tmux "$case_dir" herdr)

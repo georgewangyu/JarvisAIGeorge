@@ -107,6 +107,8 @@ make_spawn_case() {
   fakebin=$(make_spawn_fakebin "$case_dir/fake")
   mkdir -p "$home/data" "$home/projects" "$home/state" "$home/config"
   printf 'claude\n' > "$home/config/crew-harness"
+  # A worktree-model fixture; this fork defaults to shared-checkout.
+  printf 'worktree\n' > "$home/config/workspace-isolation"
   printf '%s\n' "$$" > "$home/state/.lock"
   printf '%s off\n' "$$" > "$home/state/.trace-context-effective"
   fm_git_worktree "$proj" "$wt" "wt-$name"
@@ -201,6 +203,8 @@ run_two_level() {
   sm="$base/sm"
   mkdir -p "$prim/config" "$prim/data" "$prim/state" "$prim/projects"
   printf 'claude\n' > "$prim/config/crew-harness"
+  # Worktree-model nested worker below; the secondmate home inherits this pin.
+  printf 'worktree\n' > "$prim/config/workspace-isolation"
   [ "$pfile" = present ] && : > "$prim/config/trace-context"
   touch "$prim/state/.last-watcher-beat"
   start_trace_session "$prim" "$penv"
@@ -242,6 +246,8 @@ run_two_level() {
   wwt="$base/wwt"
   fm_git_worktree "$wproj" "$wwt" "wt-$name"
   mkdir -p "$sm/state" "$sm/projects" "$sm/data/$worker_id"
+  mkdir -p "$sm/config"
+  [ -e "$sm/config/workspace-isolation" ] || printf 'worktree\n' > "$sm/config/workspace-isolation"
   write_ship_brief "$sm/data/$worker_id/brief.md" "$worker_id"
   touch "$sm/state/.last-watcher-beat"
   start_trace_session "$sm" "$TL_ENV_TC"
@@ -520,6 +526,7 @@ test_two_routed_tasks_through_one_secondmate_root_distinct_traces() {
   mkdir -p "$sm/data" "$sm/projects" "$sm/state" "$sm/config"
   printf 'claude\n' > "$sm/config/crew-harness"
   : > "$sm/config/trace-context"
+  printf 'worktree\n' > "$sm/config/workspace-isolation"
   printf '%s\n' "$$" > "$sm/state/.lock"
   touch "$sm/state/.last-watcher-beat"
   start_trace_session "$sm"
