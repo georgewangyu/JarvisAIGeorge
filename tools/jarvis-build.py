@@ -25,12 +25,25 @@ Usage:
   python3 tools/jarvis-build.py            write every output
   python3 tools/jarvis-build.py --check    fail if any output is stale or a check fails (CI)
   python3 tools/jarvis-build.py --fetch    refresh vendored peer manifests from GitHub
+  python3 tools/jarvis-build.py --check --base <ref>
+                                           also fail if plugin files changed since <ref>
+                                           without a version bump (CI passes the push base)
+
+Version gate: Claude Code and Codex cache a plugin by version, and a running
+session keeps the folder of the version it started with. A change shipped under
+the same version never reaches new sessions, so every plugin change needs a new
+version. A plain build bumps the patch version when plugin files differ from the
+base (default: the merge base with origin/main) and the version did not move;
+--check fails instead. `version_ignore` in jarvis-build.json lists globs that do
+not count (default for a repo-root plugin: .github/*, tests/*).
 
 Stdlib only, Python 3.9+.
 """
 import argparse
+import fnmatch
 import json
 import re
+import subprocess
 import sys
 import urllib.request
 from pathlib import Path
@@ -742,24 +755,93 @@ class Repo:
             print(f"fetched {url} -> {target.relative_to(self.root)}")
 
 
+# ---------- version gate ----------
+def git(root, *args):
+    r = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+def version_tuple(v):
+    try:
+        return tuple(int(x) for x in str(v).split("."))
+    except ValueError:
+        raise BuildError(f"version '{v}' is not dotted numbers")
+
+
+def default_base(root):
+    if git(root, "rev-parse", "--verify", "-q", "origin/main") is None:
+        return None
+    base = git(root, "merge-base", "HEAD", "origin/main")
+    return base.strip() if base else None
+
+
+def version_gate(repo, base):
+    """None when the version is fine, else (base_version, changed files)."""
+    if not base or set(base) == {"0"} or git(repo.root, "rev-parse", "--verify", "-q", base + "^{commit}") is None:
+        return None
+    rel = repo.plugin_rel
+    manifest_rel = "jarvis-extension.json" if rel == "." else f"{rel}/jarvis-extension.json"
+    old = git(repo.root, "show", f"{base}:{manifest_rel}")
+    if old is None:
+        return None  # a new plugin has no earlier version to move past
+    old_version = json.loads(old)["version"]
+    ignore = repo.config.get("version_ignore", [".github/*", "tests/*"] if rel == "." else [])
+    names = (git(repo.root, "diff", "--name-only", base, "--", rel) or "").split("\n")
+    names += (git(repo.root, "ls-files", "-o", "--exclude-standard", "--", rel) or "").split("\n")
+    changed = sorted({n for n in names if n and not any(fnmatch.fnmatch(n, g) for g in ignore)})
+    if not changed or version_tuple(repo.manifest["version"]) > version_tuple(old_version):
+        return None
+    return old_version, changed
+
+
+def bump_patch(repo, old_version):
+    parts = list(version_tuple(max(old_version, repo.manifest["version"], key=version_tuple)))
+    parts[-1] += 1
+    new = ".".join(str(x) for x in parts)
+    f = repo.plugin / "jarvis-extension.json"
+    data = json.loads(f.read_text())
+    data["version"] = new
+    f.write_text(dump_json(data))
+    return new
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=".", help="repo root (default: cwd)")
     ap.add_argument("--check", action="store_true", help="fail on stale outputs or failed checks")
     ap.add_argument("--fetch", action="store_true", help="refresh vendored peer manifests, then build")
+    ap.add_argument("--base", help="git ref the version gate compares against (default: merge base with origin/main)")
     args = ap.parse_args()
     repo = Repo(args.root)
+    base = args.base if args.base is not None else default_base(repo.root)
     try:
         if args.fetch:
             repo.fetch()
         repo.check_sources()
         repo.build()
+        gate = version_gate(repo, base)
+        if gate and not args.check:
+            new = bump_patch(repo, gate[0])
+            print(f"jarvis-build: plugin files changed since {base[:12]}; version bumped to {new}")
+            repo = Repo(args.root)
+            repo.check_sources()
+            repo.build()
+            gate = None
     except BuildError as e:
         print(f"jarvis-build: {e}", file=sys.stderr)
         return 2
     if repo.errors:
         for e in repo.errors:
             print(f"jarvis-build: {e}", file=sys.stderr)
+        return 1
+    if args.check and gate:
+        old, changed = gate
+        print(f"jarvis-build: plugin files changed since {base[:12]} but the version is still "
+              f"{repo.manifest['version']} (was {old}). Run python3 tools/jarvis-build.py to bump it; "
+              "a running session keeps the folder of its version, so same-version changes never ship.",
+              file=sys.stderr)
+        for n in changed[:10]:
+            print(f"  {n}", file=sys.stderr)
         return 1
     if args.check:
         stale = repo.stale()

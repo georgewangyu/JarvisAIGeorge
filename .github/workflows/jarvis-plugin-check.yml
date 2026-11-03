@@ -16,11 +16,15 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Generated adapters match sources, frontmatter, duplicate skill names
-        run: python3 tools/jarvis-build.py --check
+      - name: Generated adapters match sources, frontmatter, duplicate skill names, version bumped
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: python3 tools/jarvis-build.py --check --base "$BASE"
       - name: Bitter-lesson tags
         run: python3 plugins/jarvis-ai-george/skills/principles-bitter-lesson/scripts/bitter_lesson.py check --root plugins/jarvis-ai-george
       - name: Skill script tests
@@ -35,6 +39,7 @@ jobs:
           bash tests/jarvis-manager-write-guard.test.sh
           bash tests/jarvis-launch.test.sh
           bash tests/jarvis-sidebar-hook.test.sh
+          bash tests/jarvis-plugin-versioning.test.sh
       - name: AGENTS.md fits the project-document budget
         run: bash tests/fm-agents-md-size.test.sh
       - name: Skill listing budget and catalog diagnostic

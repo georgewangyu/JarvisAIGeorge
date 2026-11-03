@@ -1,12 +1,12 @@
 {
-  "description": "Jarvis sidebar in cmux: activity, current tool, subagents, PR and issue pills. No-op outside cmux.",
+  "description": "Jarvis sidebar in cmux (activity, current tool, subagents, PR and issue pills; no-op outside cmux) and a once-per-session update notice. Every command runs only files in this plugin folder and exits 0 quietly if the folder is gone.",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"",
+            "command": "f=\"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"; [ -f \"$f\" ] || { cat >/dev/null 2>&1; exit 0; }; exec bash \"$f\"",
             "timeout": 5
           }
         ]
@@ -17,7 +17,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"",
+            "command": "f=\"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"; [ -f \"$f\" ] || { cat >/dev/null 2>&1; exit 0; }; exec bash \"$f\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "f=\"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-update-notice.sh\"; [ -f \"$f\" ] || { cat >/dev/null 2>&1; exit 0; }; exec bash \"$f\"",
             "timeout": 5
           }
         ]
@@ -28,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"",
+            "command": "f=\"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"; [ -f \"$f\" ] || { cat >/dev/null 2>&1; exit 0; }; exec bash \"$f\"",
             "timeout": 5
           }
         ]
@@ -39,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"",
+            "command": "f=\"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"; [ -f \"$f\" ] || { cat >/dev/null 2>&1; exit 0; }; exec bash \"$f\"",
             "timeout": 5
           }
         ]
@@ -50,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"",
+            "command": "f=\"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"; [ -f \"$f\" ] || { cat >/dev/null 2>&1; exit 0; }; exec bash \"$f\"",
             "timeout": 5
           }
         ]
@@ -61,7 +66,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"",
+            "command": "f=\"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"; [ -f \"$f\" ] || { cat >/dev/null 2>&1; exit 0; }; exec bash \"$f\"",
             "timeout": 5
           }
         ]
@@ -72,7 +77,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"",
+            "command": "f=\"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"; [ -f \"$f\" ] || { cat >/dev/null 2>&1; exit 0; }; exec bash \"$f\"",
             "timeout": 5
           }
         ]
@@ -83,7 +88,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"",
+            "command": "f=\"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"; [ -f \"$f\" ] || { cat >/dev/null 2>&1; exit 0; }; exec bash \"$f\"",
             "timeout": 5
           }
         ]
@@ -94,7 +99,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"",
+            "command": "f=\"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"; [ -f \"$f\" ] || { cat >/dev/null 2>&1; exit 0; }; exec bash \"$f\"",
             "timeout": 5
           }
         ]
@@ -105,7 +110,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"",
+            "command": "f=\"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"; [ -f \"$f\" ] || { cat >/dev/null 2>&1; exit 0; }; exec bash \"$f\"",
             "timeout": 5
           }
         ]
@@ -116,7 +121,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"",
+            "command": "f=\"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"; [ -f \"$f\" ] || { cat >/dev/null 2>&1; exit 0; }; exec bash \"$f\"",
             "timeout": 3
           }
         ]

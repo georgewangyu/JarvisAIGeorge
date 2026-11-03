@@ -48,7 +48,12 @@ claude plugin disable george-coding-agent@jarvis-ai-george
 claude --agent george-coding-agent:coding --settings '{"enabledPlugins":{"george-coding-agent@jarvis-ai-george":true}}'
 ```
 
-Plugins update by version: bump `version` in the manifest when a change should reach installed copies.
+Plugins update by version, and every plugin change gets a new one:
+
+- Claude Code caches a plugin under `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`. An update installs a new folder and marks the old one `.orphaned_at`; a running session keeps the old folder and its hooks until it restarts. A change under the same version is "already at the latest version" and never ships. (Checked with a throwaway `CLAUDE_CONFIG_DIR` on Claude Code 2.1.316; old folders stayed on disk for weeks.)
+- `python3 tools/jarvis-build.py` bumps the patch version when files under the plugin differ from the merge base with `origin/main` and the version did not move. `--check --base <ref>` (CI) fails instead. `version_ignore` in `jarvis-build.json` lists globs that do not count (default for a repo-root plugin: `.github/*`, `tests/*`).
+- Plugin hooks run only files inside `${CLAUDE_PLUGIN_ROOT}`, never home scripts, and each command exits 0 quietly if its folder is gone.
+- An old session sees "Jarvis was updated. Restart to load it." once, from `hooks/jarvis-update-notice.sh`.
 
 ## Install: Codex
 
@@ -153,4 +158,4 @@ Verify on a personal laptop (Codex is not run on the work machine): whether Code
 | Repo `.claude/settings.json` `agent` | yes: plain `claude` in the folder starts that agent; a subfolder that is its own repo (`projects/<x>`) does not inherit it |
 | Repo `extraKnownMarketplaces` plus `enabledPlugins` on folder trust | the marketplace is added and a same-repo plugin is loaded with no extra prompt; a plugin whose source is another repo is not installed |
 | Project agent frontmatter `hooks` | yes, active while that agent is the session (the write guard) |
-| Plugin update | by version only; the same version means no update |
+| Plugin update | by version only; the same version means no update, so the build bumps it on every plugin change |
