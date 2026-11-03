@@ -138,8 +138,8 @@ Without it the adapter behaves exactly as described above.
 [pinned] JarvisAIGeorge                           manager tab, standalone
 [pinned] JarvisAIGeorge: Workers · 1 working · 1 needs you
            (header runs the read-only board)
-           ◆ fix-login                            one workspace per task
-           ◆ add-tests                            orange = needs you, charcoal = done
+           ◆ Coding: Fix the login redirect       one workspace per task
+           ◆ Reviewer: Check startup flow         orange = needs you, charcoal = done
 ```
 
 - **Manager tab.** Each manager session start (`bin/jarvis-setup.sh detect`, Claude Code or Codex, in the background and bounded) and the first layout spawn record the caller's cmux workspace in `state/.cmux-manager-ws`, rename it to the home name, pin it and color it; a spawn also keeps it right before its Workers group.
@@ -149,13 +149,15 @@ Without it the adapter behaves exactly as described above.
   Task workspaces are created inside it with `--group`.
 - **Board.** The group's generated header runs `bin/fm-cmux-board.sh`.
   Its `anchor_workspace_ref` resolves through the native tree to exactly one workspace UUID and surface before input is sent; ambiguous or absent anchors are left untouched.
-  Every 10 seconds (`FM_CMUX_BOARD_INTERVAL`) it reads each task through `bin/fm-crew-state.sh` with forge reads off, redraws on change, renames the group with live counts, and colors worker tabs.
+  Every 10 seconds (`FM_CMUX_BOARD_INTERVAL`) it reads each task through `bin/fm-crew-state.sh` with forge reads off, redraws on change, renames the group with live counts, colors worker tabs, and puts back each worker tab's display title when cmux or an agent retitled it.
+  Each row shows the task id, its backend and state, and its display title on the line below.
   It lists every task in the home and names each row's backend; only cmux tasks get tab colors.
   A state that is not verified stays `unknown` in its row, its count, and the group title, with the reason fm-crew-state gave, and is never counted as working.
   Codex is the common case: it has no verified live-state source for a terminal worker yet (its app-server cannot observe a pane worker and Firstmate-written project hooks do not fire; `bin/fm-busy-lib.sh` owns that verdict), so a Codex row reads `unknown` with that reason and only its finished turns are signalled.
   It never types into, wakes, or closes a worker.
   Because it reads the same pane and run-step state as supervision, it covers Codex and every other harness, including those that run no hooks.
-- **Titles and identity.** A task tab is titled `◆ <task-id>`, and its scoped label `fm-<home-tag>-<id>` moves to the cmux workspace description.
+- **Worker titles.** A task tab reads `◆ <display title>`, for example `◆ Reviewer: Check startup flow`: the role from `fm-spawn --agent` (the agent name, made readable), then a short description. `bin/fm-spawn.sh --title <text>` sets it; otherwise it is the brief's `title:` line or the first line of its "Captain's intent", else the task id. At most 50 characters (`bin/fm-display-title-lib.sh`). It is recorded as `display_title=` in the task meta, set at spawn, kept and re-set on `--relaunch` and after a reboot heal, and restored by the board when cmux auto-retitles the tab.
+- **Titles and identity.** The display title is display only. The scoped label `fm-<home-tag>-<id>` lives in the cmux workspace description, and it and the task id are the only identifiers: recovery, routing, teardown, reboot heal and board lookups match the label (title or description), never the display title, and two tasks may share a title. A display title starts with `◆ `, so it can never equal a label; the exactly-one-match rule for labels (#16) is unchanged.
   Every lookup accepts the title or the description, so home scoping, recovery, list, and cleanup keep working.
   Lifecycle lookups read every cmux window regardless of layout mode, so a teardown or peek run from another window still finds the task.
 - **Sidebar state for Claude.** The core plugin's sidebar hook shows the session's state as pills on its own tab; see "Sidebar" below.

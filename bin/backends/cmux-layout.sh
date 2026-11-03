@@ -106,9 +106,25 @@ fm_cmux_layout_hex() {
   fi
 }
 
-fm_cmux_layout_task_title() {  # <fm-task-label>
-  local id=${1#fm-}
-  printf '%s %s' "$FM_CMUX_LAYOUT_WORKER_MARK" "$id"
+# A worker tab's title: the mark, then the task's display title
+# (bin/fm-display-title-lib.sh; FM_CMUX_DISPLAY_TITLE at spawn) or its id.
+# Display only: every lookup uses the scoped label in the tab's description.
+fm_cmux_layout_task_title() {  # <task-id> [<display-title>]
+  local id=${1#fm-} t=${2:-${FM_CMUX_DISPLAY_TITLE:-}}
+  printf '%s %s' "$FM_CMUX_LAYOUT_WORKER_MARK" "${t:-$id}"
+}
+
+# Rename one worker tab to <title> unless it already reads that. Best effort.
+fm_cmux_layout_apply_title() {  # <workspace-id> <window> <title> [<current>]
+  local ws=$1 w=$2 want=$3 cur=${4-}
+  [ -n "$ws" ] && [ -n "$want" ] || return 0
+  [ "$cur" = "$want" ] && return 0
+  if [ -n "$w" ]; then
+    fm_backend_cmux_cli workspace-action --workspace "$ws" --window "$w" --action rename --title "$want" >/dev/null 2>&1
+  else
+    fm_backend_cmux_cli workspace-action --workspace "$ws" --action rename --title "$want" >/dev/null 2>&1
+  fi
+  return 0
 }
 
 # The manager workspace: the caller's own cmux workspace, recorded once per
@@ -230,7 +246,7 @@ fm_cmux_layout_create() {  # <scoped-label> <cwd>
   gid=${gw%%$'\t'*}; w=${gw#*$'\t'}
   [ -n "$gw" ] && [ -n "$gid" ] && [ -n "$w" ] || return 2
   fm_backend_cmux_cli new-workspace --window "$w" --group "$gid" --group-placement end \
-        --name "$(fm_cmux_layout_task_title "${label#fm-"$(fm_backend_cmux_home_label)"-}")" \
+        --name "$(fm_cmux_layout_task_title "${label#fm-"$(fm_backend_cmux_home_label)"-}" "${FM_CMUX_DISPLAY_TITLE:-}")" \
         --description "$label" --cwd "$cwd" --focus false --id-format uuids >/dev/null 2>&1 || return 1
   return 0
 }
@@ -251,7 +267,10 @@ fm_cmux_layout_bucket() {  # <state>
 # The title is re-read after a rename; a title that did not change, or could
 # not be read, is left in FM_CMUX_LAYOUT_TITLE_ERROR for the board to show,
 # and the next pass tries again. It never touches worker endpoints.
-# Input on stdin: "<workspace-id>\t<bucket>" lines. Best effort, only on change.
+# Input on stdin: "<workspace-id>\t<bucket>\t<tab-title>" lines. Colors change
+# only on a bucket change; a tab whose live title differs from <tab-title> (cmux
+# or an agent retitled it, a relaunch, a reboot heal) is renamed back each pass.
+# Best effort.
 # shellcheck disable=SC2034 # FM_CMUX_LAYOUT_TITLE_ERROR is read by bin/fm-cmux-board.sh
 fm_cmux_layout_sync() {  # <window> <group-ref> <summary>
   local w=$1 gid=$2 summary=$3 ws b color cache="$FM_HOME/state/.cmux-layout-ui" want cur
@@ -267,8 +286,13 @@ fm_cmux_layout_sync() {  # <window> <group-ref> <summary>
     [ "$cur" = "$want" ] || FM_CMUX_LAYOUT_TITLE_ERROR="group title still reads '${cur:-?}'; retrying next pass"
   fi
   touch "$cache" 2>/dev/null
-  while IFS=$'\t' read -r ws b; do
+  local titles tt
+  titles=$(fm_backend_cmux_workspaces_json 2>/dev/null | jq -r '.workspaces[]? | "\(.id)\t\(.title // "")"' 2>/dev/null)
+  while IFS=$'\t' read -r ws b tt; do
     [ -n "$ws" ] || continue
+    if [ -n "$tt" ] && [ -n "$titles" ]; then
+      fm_cmux_layout_apply_title "$ws" "$w" "$tt" "$(printf '%s\n' "$titles" | awk -F'\t' -v id="$ws" '$1 == id { sub(/^[^\t]*\t/, ""); print; exit }')"
+    fi
     grep -qxF "$ws	$b" "$cache" 2>/dev/null && continue
     case "$b" in
       'needs you') color=Orange ;;

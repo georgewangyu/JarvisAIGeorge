@@ -317,6 +317,11 @@ for meta in "${metas[@]}"; do
       continue
     fi
   fi
+  dt=$(fm_meta_get "$meta" display_title)
+  if [ -n "$dt" ] && fm_cmux_layout_enabled; then
+    act "retitle fm-$id" fm_cmux_layout_apply_title "$ws" "$win" "$(fm_cmux_layout_task_title "$id" "$dt")" \
+      "$(printf '%s' "$ALL" | jq -r --arg id "$ws" 'first(.workspaces[]? | select(.id == $id) | .title // "")' 2>/dev/null)"
+  fi
   target="$ws:$sf"
   wt=$(fm_meta_get "$meta" worktree)
   state=$(fm_backend_cmux_agent_state "$target")

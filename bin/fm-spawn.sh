@@ -10,6 +10,11 @@
 #   A claude launch pins a fresh session id (recorded as claude_session_id=);
 #   `--relaunch --resume` reopens that conversation with a short resume note in
 #   place of the brief (bin/fm-cmux-reboot-heal.sh uses it after a restart).
+#   --title <text> sets the worker tab's display title (cmux Workers layout:
+#   `◆ <title>`); default: the brief's title or first intent line, else the task
+#   id, led by the --agent role ("Reviewer: ..."), at most 50 characters
+#   (bin/fm-display-title-lib.sh). Recorded as display_title= and kept on
+#   relaunch. Display only: the task id and scoped label stay the identifiers.
 #   --mode and --yolo are this task's delivery contract, REQUIRED for every ship
 #   spawn and refused on --scout and --secondmate spawns. Firstmate resolves both
 #   per task at intake (AGENTS.md section 7); data/projects.md holds the captain's
@@ -527,6 +532,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-pr-lib.sh"
 # shellcheck source=bin/fm-dod-lib.sh
 . "$SCRIPT_DIR/fm-dod-lib.sh"
+# shellcheck source=bin/fm-display-title-lib.sh
+. "$SCRIPT_DIR/fm-display-title-lib.sh"
 # shellcheck source=bin/fm-trace-context-lib.sh
 . "$SCRIPT_DIR/fm-trace-context-lib.sh"
 # shellcheck source=bin/fm-workspace-lib.sh
@@ -561,6 +568,7 @@ MODE_SET=0
 YOLO_SET=0
 TRACEPARENT_SET=0
 RELAUNCH=0
+DISPLAY_TITLE_ARG=
 POS=()
 want_value=
 for a in "$@"; do
@@ -602,6 +610,9 @@ for a in "$@"; do
       ;;
     agent)
       CLAUDE_AGENT=$a
+      ;;
+    title)
+      DISPLAY_TITLE_ARG=$a
       ;;
     *)
       echo "error: internal parser state for --$want_value" >&2
@@ -653,6 +664,8 @@ for a in "$@"; do
     ;;
   --traceparent) want_value=traceparent ;;
   --agent) want_value=agent ;;
+  --title) want_value=title ;;
+  --title=*) DISPLAY_TITLE_ARG=${a#--title=} ;;
   --resume) CLAUDE_RESUME=1 ;;
   --agent=*) CLAUDE_AGENT=${a#--agent=} ;;
   --traceparent=*)
@@ -2643,6 +2656,10 @@ else
   WT=""
   BRIEF="$DATA/$ID/brief.md"
 fi
+# The tab's display title (bin/fm-display-title-lib.sh): never an identifier.
+# A relaunch keeps the recorded one unless --title replaces it.
+DISPLAY_TITLE=$(fm_display_title_resolve "$ID" "$CLAUDE_AGENT" "$BRIEF" "$DISPLAY_TITLE_ARG" \
+  "$([ "$RELAUNCH" -eq 1 ] && printf '%s' "${RELAUNCH_META:-}")")
 WORKSPACE_ISOLATION_MODE=$(fm_workspace_isolation_mode "$CONFIG") || exit 1
 if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ] && [ "$WORKSPACE_ISOLATION_MODE" = worktree ]; then
   SPAWN_TREEHOUSE_PROJECT_LOCK=$(fm_treehouse_project_lock_path "$PROJ_ABS") || {
@@ -3291,7 +3308,7 @@ EOF
     ;;
   cmux)
     fm_backend_cmux_container_ensure || exit 1
-    CMUX_TASK_IDS=$(fm_backend_cmux_create_task "$W" "$PROJ_ABS") || exit 1
+    CMUX_TASK_IDS=$(FM_CMUX_DISPLAY_TITLE="$DISPLAY_TITLE" fm_backend_cmux_create_task "$W" "$PROJ_ABS") || exit 1
     read -r CMUX_WORKSPACE_ID CMUX_SURFACE_ID <<EOF
 $CMUX_TASK_IDS
 EOF
@@ -4331,7 +4348,7 @@ fi
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness kind mode yolo tasktmp model effort busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx claude_agent claude_session_id", keys, " ")
+      split("window endpoint_task_id worktree project harness kind mode yolo tasktmp model effort busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx claude_agent claude_session_id display_title", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
@@ -4351,6 +4368,7 @@ preserve_relaunch_meta() {
   echo "effort=${EFFORT:-default}"
   [ -z "$CLAUDE_AGENT" ] || echo "claude_agent=$CLAUDE_AGENT"
   [ -z "$CLAUDE_SESSION_ID" ] || echo "claude_session_id=$CLAUDE_SESSION_ID"
+  [ -z "$DISPLAY_TITLE" ] || echo "display_title=$DISPLAY_TITLE"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
   [ "$KIND" = secondmate ] || echo "workspace_isolation=$WORKSPACE_ISOLATION_MODE"
@@ -4398,6 +4416,10 @@ if [ "$RELAUNCH" -eq 0 ]; then
     exit 1
   fi
   SPAWN_META_TMP=
+fi
+# A relaunch reuses its tab, so set the title it would have had at spawn.
+if [ "$RELAUNCH" -eq 1 ] && [ "$BACKEND" = cmux ] && [ -n "$DISPLAY_TITLE" ] && fm_cmux_layout_enabled 2>/dev/null; then
+  fm_cmux_layout_apply_title "$CMUX_WORKSPACE_ID" "" "$(fm_cmux_layout_task_title "$ID" "$DISPLAY_TITLE")" || true
 fi
 
 # Fuse the backlog In-flight transition into the publication that just created

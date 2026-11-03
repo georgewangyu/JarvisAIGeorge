@@ -45,7 +45,7 @@ meta_get() {  # <file> <key>
 }
 
 render() {  # -> board text on stdout; "<ws>\t<bucket>" lines on fd 3
-  local m id ws st line b be n_work=0 n_need=0 n_done=0 n_unk=0 rows=""
+  local m id ws st line b be dt tt n_work=0 n_need=0 n_done=0 n_unk=0 rows=""
   for m in "$STATE"/*.meta; do
     [ -f "$m" ] || continue
     id=$(basename "$m" .meta)
@@ -63,11 +63,15 @@ render() {  # -> board text on stdout; "<ws>\t<bucket>" lines on fd 3
       working) n_work=$((n_work + 1)) ;;
       *) n_unk=$((n_unk + 1)) ;;
     esac
+    dt=$(meta_get "$m" display_title)
     rows="$rows$(printf '  %-10s %-28s %-7s %s' "$b" "$id" "$be" "$st")"$'\n'
+    [ -n "$dt" ] && rows="$rows$(printf '  %-10s %s' '' "$dt")"$'\n'
     if [ "$b" = unknown ]; then
       rows="$rows$(printf '  %-10s %s' '' "$(fm_cmux_layout_unknown_reason "$line")")"$'\n'
     fi
-    [ "$be" = cmux ] && [ -n "$ws" ] && printf '%s\t%s\n' "$ws" "$b" >&3
+    tt=""
+    [ -n "$dt" ] && tt=$(fm_cmux_layout_task_title "$id" "$dt")
+    [ "$be" = cmux ] && [ -n "$ws" ] && printf '%s\t%s\t%s\n' "$ws" "$b" "$tt" >&3
   done
   SUMMARY=""
   [ "$n_work" -gt 0 ] && SUMMARY="$n_work working"

@@ -346,8 +346,30 @@ test_dead_board_restart_resolves_anchor_ref() {
   pass 'reboot heal: dead board restart resolves anchor ref to UUID and surface'
 }
 
+# Issue #18: a worker tab shows "◆ <display title>". Heal still finds the task by
+# its label (description), never by that title, and puts the recorded title back.
+test_display_title_matched_by_label_and_restored() {
+  local d="$TMP_ROOT/display-title" tag out
+  mkdir -p "$d"; make_fake "$d"; new_home "$d"
+  tag=$(hometag "$d")
+  echo workers > "$d/home/config/cmux-layout"
+  add_tab "$d" W-T S-T "fm-$tag-t1" ttys070 170 claude
+  # A decoy shows the same title and carries no label.
+  add_tab "$d" W-DECOY S-DECOY "" ttys071 171 claude
+  jq '(.workspaces[] | select(.id == "W-DECOY") | .title) = "◆ Reviewer: Check startup flow"' "$d/fake/workspaces.json" > "$d/fake/t" && mv "$d/fake/t" "$d/fake/workspaces.json"
+  printf '────\n❯\xc2\xa0\n────\n' > "$d/fake/screen.S-T"
+  write_meta "$d" t1 W-OLD S-OLD "display_title=Reviewer: Check startup flow"
+  out=$(run_heal "$d" --force)
+  grep -q '^window=W-T:S-T$' "$d/home/state/t1.meta" || fail "heal must rebind by label: $(cat "$d/home/state/t1.meta") $out"
+  grep -q 'workspace-action --workspace W-T --window FAKEWIN --action rename --title ◆ Reviewer: Check startup flow' "$d/fake/log" \
+    || fail "heal must put the display title back on the task's own tab: $(grep workspace-action "$d/fake/log")"
+  ! grep -q 'W-DECOY' "$d/fake/log" || fail "a tab that only shares the title must never be touched: $(grep W-DECOY "$d/fake/log")"
+  pass "reboot heal: matches the task by label, not by its display title, and restores the title on its own tab"
+}
+
 test_agent_state
 test_epoch_gate
+test_display_title_matched_by_label_and_restored
 test_dry_run_changes_nothing
 test_prompt_hooks
 test_refreshes_endpoint_and_clears_residue

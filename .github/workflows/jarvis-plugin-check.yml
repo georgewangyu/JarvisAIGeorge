@@ -43,6 +43,7 @@ jobs:
           bash tests/jarvis-hook-pinning.test.sh
           bash tests/jarvis-new-extension.test.sh
           bash tests/jarvis-home-discovery.test.sh
+          bash tests/jarvis-worker-titles.test.sh
       - name: AGENTS.md fits the project-document budget
         run: bash tests/fm-agents-md-size.test.sh
       - name: Skill listing budget and catalog diagnostic
