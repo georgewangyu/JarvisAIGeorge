@@ -24,6 +24,7 @@
 #   fm-test-run.sh --concurrent-safe-family-jobs-max <name>
 #   fm-test-run.sh --list-lanes
 #   fm-test-run.sh --check-coverage
+#   fm-test-run.sh --list-dropped   suites this fork skips, with the reason
 #
 # Aggregation (no suite execution):
 #   fm-test-run.sh --aggregate-json <out.json> <lane.json> [more lane.json...]
@@ -485,7 +486,9 @@ list_known_lanes() {
 # Exact proven-isolated candidate set (same paths as
 # bin/fm-test-isolation-proof.sh --list). Do not expand without a new concurrent
 # isolation proof archive.
-list_proven_isolated() {
+list_proven_isolated() { upstream_list_proven_isolated | jarvis_keep; }
+
+upstream_list_proven_isolated() {
   cat <<'EOF'
 tests/fm-arm-pretool-check.test.sh
 tests/fm-backend-herdr.test.sh
@@ -563,7 +566,9 @@ portable_parallel_lane_weight() {
 # tests/fm-pi-primary-types.test.sh belongs to this lane because
 # this is the parallel job that installs the Pi package; moving it needs that
 # workflow step moved with it.
-list_portable_parallel_1() {
+list_portable_parallel_1() { upstream_list_portable_parallel_1 | jarvis_keep; }
+
+upstream_list_portable_parallel_1() {
   cat <<'EOF'
 tests/fm-lint.test.sh
 tests/fm-pr-merge.test.sh
@@ -580,7 +585,9 @@ EOF
 }
 
 # Portable parallel shard 2: the complementary LPT half of the proven set.
-list_portable_parallel_2() {
+list_portable_parallel_2() { upstream_list_portable_parallel_2 | jarvis_keep; }
+
+upstream_list_portable_parallel_2() {
   cat <<'EOF'
 tests/fm-captain-hold-lifecycle.test.sh
 tests/fm-x-mode.test.sh
@@ -1134,7 +1141,7 @@ run_coverage_guard() {
   fi
 
   if [ -x "$ROOT/bin/fm-test-isolation-proof.sh" ]; then
-    "$ROOT/bin/fm-test-isolation-proof.sh" --list | LC_ALL=C sort -u >"$tmp/proof_list"
+    "$ROOT/bin/fm-test-isolation-proof.sh" --list | jarvis_keep | LC_ALL=C sort -u >"$tmp/proof_list"
     if ! cmp -s "$tmp/proven" "$tmp/proof_list"; then
       log "coverage guard: embedded proven-isolated set diverges from bin/fm-test-isolation-proof.sh --list"
       comm -3 "$tmp/proven" "$tmp/proof_list" >&2 || true
@@ -1225,6 +1232,56 @@ print(f"FM_TEST_AGGREGATE lanes={len(lanes)} total={total} failed={failed} skipp
 PY
 }
 
+# --- JarvisAIGeorge CI trim -------------------------------------------------
+# This fork runs Claude Code and Codex on cmux or tmux, so CI skips the suites
+# that exist only for other agent tools and backends. The files stay in tests/
+# so FirstMate syncs apply cleanly; docs/jarvisharness.md "CI trim" logs each
+# removal and its reason. `fm-test-run.sh --list-dropped` prints them.
+jarvis_dropped_reason() {  # <test basename>: prints the reason, or returns 1
+  # FM_TEST_RUN_NO_JARVIS_TRIM=1 turns the trim off, for the runner's own
+  # mechanics tests that use dropped suites as fixtures.
+  [ "${FM_TEST_RUN_NO_JARVIS_TRIM:-0}" != 1 ] || return 1
+  case "$1" in
+    fm-pi-*|fm-calm-pi-extension.test.sh|fm-afk-pi-herdr-return-e2e.test.sh|fm-herdr-pi-stale-registration-live-e2e.test.sh)
+      echo "Pi harness: not used by Jarvis" ;;
+    fm-grok-*) echo "grok harness: not used by Jarvis" ;;
+    fm-kimi-*) echo "kimi harness: not used by Jarvis" ;;
+    fm-muse-*) echo "muse harness: not used by Jarvis" ;;
+    fm-omp-*) echo "omp harness: not used by Jarvis" ;;
+    fm-agy-*|fm-send-agy-confirm.test.sh) echo "agy harness: not used by Jarvis" ;;
+    fm-rovo-*) echo "rovo harness: not used by Jarvis" ;;
+    fm-gemini-*) echo "gemini harness: not used by Jarvis" ;;
+    fm-cursor-harness.test.sh|fm-cursor-primary.test.sh|fm-cursor-primary-live-e2e.test.sh)
+      echo "Cursor harness: not used by Jarvis" ;;
+    fm-opencode-*) echo "opencode harness: not used by Jarvis" ;;
+    fm-backend-zellij*) echo "zellij backend: Jarvis uses cmux or tmux" ;;
+    fm-backend-orca*) echo "orca backend: Jarvis uses cmux or tmux" ;;
+    fm-herdr-attached-viewer-live-e2e.test.sh|fm-herdr-session-cleanup-e2e.test.sh|\
+    fm-herdr-submit-confirm-live-e2e.test.sh|fm-herdr-version-floor-live-e2e.test.sh|\
+    fm-send-secondmate-marker-herdr-e2e.test.sh)
+      echo "real Herdr lane: Jarvis uses cmux or tmux; Herdr unit tests still run" ;;
+    *)
+      [ "$(family_for_basename "$1")" = real-herdr-gated ] || return 1
+      echo "real Herdr lane: Jarvis uses cmux or tmux; Herdr unit tests still run" ;;
+  esac
+}
+
+jarvis_keep() {  # filter stdin paths, dropping the trimmed suites
+  local s
+  while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    jarvis_dropped_reason "$(basename "$s")" >/dev/null || printf '%s\n' "$s"
+  done
+}
+
+list_jarvis_dropped() {
+  local f base
+  for f in tests/*.test.sh; do
+    base=$(basename "$f")
+    if reason=$(jarvis_dropped_reason "$base"); then printf '%s\t%s\n' "$f" "$reason"; fi
+  done | LC_ALL=C sort
+}
+
 all_repo_tests() {
   # Deterministic lexical order (same as bash glob expansion under LC_ALL=C).
   local f
@@ -1232,7 +1289,7 @@ all_repo_tests() {
   for f in tests/*.test.sh; do
     [ -f "$f" ] || continue
     printf '%s\n' "$f"
-  done | LC_ALL=C sort
+  done | jarvis_keep | LC_ALL=C sort
 }
 
 normalize_script_path() {
@@ -1286,7 +1343,20 @@ select_family() {
       found=1
     fi
   done < <(all_repo_tests)
-  [ "$found" -eq 1 ] || die "no tests mapped to family '$want'"
+  [ "$found" -eq 1 ] || family_wholly_dropped "$want" || die "no tests mapped to family '$want'"
+}
+
+# A family whose every member is on the JarvisAIGeorge CI trim list (the
+# real-Herdr lane) selects nothing rather than failing.
+family_wholly_dropped() {  # <family>
+  local f base any=0
+  for f in tests/*.test.sh; do
+    base=$(basename "$f")
+    [ "$(family_for_basename "$base")" = "$1" ] || continue
+    jarvis_dropped_reason "$base" >/dev/null || return 1
+    any=1
+  done
+  [ "$any" = 1 ]
 }
 
 families_for_test_reference() {  # <needle>...
@@ -1301,7 +1371,14 @@ families_for_test_reference() {  # <needle>...
       found=1
     fi
   done < <(all_repo_tests)
-  [ "$found" -eq 1 ]
+  [ "$found" -eq 1 ] && return 0
+  # A path only the JarvisAIGeorge-dropped suites reference (a Pi extension,
+  # say) selects nothing rather than reading as unmapped.
+  while IFS=$'\t' read -r s _; do
+    [ -n "$s" ] || continue
+    grep -Fq "${needles[@]}" "$s" && return 0
+  done < <(list_jarvis_dropped)
+  return 1
 }
 
 # Tests that name <needle>, selected as individual scripts rather than widened
@@ -1977,6 +2054,10 @@ while [ "$#" -gt 0 ]; do
     --list-lanes)
       LIST_LANES=1
       shift
+      ;;
+    --list-dropped)
+      list_jarvis_dropped
+      exit 0
       ;;
     --check-coverage)
       CHECK_COVERAGE=1

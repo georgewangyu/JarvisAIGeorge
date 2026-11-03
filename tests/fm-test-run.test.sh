@@ -12,17 +12,30 @@ set -u
 
 RUNNER="$ROOT/bin/fm-test-run.sh"
 
+# The runner's mechanics tests use dropped suites (Pi, orca, real Herdr) as
+# fixtures, so they run with the JarvisAIGeorge CI trim off; the list-all
+# test below turns it back on to check the trim itself.
+export FM_TEST_RUN_NO_JARVIS_TRIM=1
+
 assert_present "$RUNNER" "bin/fm-test-run.sh is missing"
 [ -x "$RUNNER" ] || fail "bin/fm-test-run.sh must be executable"
 
 test_list_all_exact_suite_coverage() {
-  local listed expected missing extra f
-  listed=$("$RUNNER" --list --all | LC_ALL=C sort)
+  local listed expected missing extra f dropped
+  listed=$(FM_TEST_RUN_NO_JARVIS_TRIM=0 "$RUNNER" --list --all | LC_ALL=C sort)
+  # The JarvisAIGeorge CI trim skips the suites --list-dropped names; every
+  # other suite must be listed, and the two sets must not overlap.
+  dropped=$(FM_TEST_RUN_NO_JARVIS_TRIM=0 "$RUNNER" --list-dropped | cut -f1 | LC_ALL=C sort)
+  [ -n "$dropped" ] || fail "--list-dropped printed nothing"
+  [ -z "$(comm -12 <(printf '%s\n' "$dropped") <(printf '%s\n' "$listed"))" ] \
+    || fail "--list --all still lists a dropped suite"
+  FM_TEST_RUN_NO_JARVIS_TRIM=0 "$RUNNER" --list-dropped | awk -F'\t' 'NF != 2 || $2 == "" { bad = 1 } END { exit bad }' \
+    || fail "every dropped suite must carry a reason"
   expected=$(
     for f in "$ROOT"/tests/*.test.sh; do
       [ -f "$f" ] || continue
       printf 'tests/%s\n' "$(basename "$f")"
-    done | LC_ALL=C sort
+    done | LC_ALL=C sort | comm -23 - <(printf '%s\n' "$dropped")
   )
   [ -n "$listed" ] || fail "--list --all printed nothing"
   missing=$(comm -23 <(printf '%s\n' "$expected") <(printf '%s\n' "$listed") || true)

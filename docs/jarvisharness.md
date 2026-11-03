@@ -43,3 +43,28 @@ Jarvis drops FirstMate's "captain" persona in what the user sees: chat follows `
 Internal identifiers and the FirstMate vocabulary in the contract, docs and skills (captain as the word for the user, crewmate, secondmate, `captains_call`, `fm-captain-hold.sh`) stay as they are, so upstream FirstMate syncs stay cheap.
 `AGENTS.md` says once that "captain" there means the user and is not a form of address.
 
+
+## CI trim (decided 2026-11-02)
+
+The inherited `CI` workflow keeps the jobs and tests for what Jarvis runs: Claude Code and Codex workers on cmux or tmux, and the shared spawn, teardown, supervision, watcher, backlog, secondmate and PR code.
+`bin/fm-test-run.sh` owns the dropped list (`jarvis_dropped_reason`), and `bin/fm-test-run.sh --list-dropped` prints every skipped suite with its reason.
+The files stay in `tests/` so a FirstMate sync applies cleanly; a sync that adds a suite for a dropped tool should extend that list rather than delete the file.
+
+| Dropped | Reason |
+|---|---|
+| Pi suites (`fm-pi-*`, `fm-calm-pi-extension`, Pi plus Herdr returns) | Pi harness: not used by Jarvis |
+| `fm-grok-*` | grok harness: not used by Jarvis |
+| `fm-kimi-*` | kimi harness: not used by Jarvis |
+| `fm-muse-*` | muse harness: not used by Jarvis |
+| `fm-omp-*` | omp harness: not used by Jarvis |
+| `fm-agy-*`, `fm-send-agy-confirm` | agy harness: not used by Jarvis |
+| `fm-rovo-*` | rovo harness: not used by Jarvis |
+| `fm-gemini-*` | gemini harness: not used by Jarvis |
+| `fm-cursor-harness`, `fm-cursor-primary*` | Cursor harness: not used by Jarvis |
+| `fm-opencode-*` | opencode harness: not used by Jarvis |
+| `fm-backend-zellij*` | zellij backend: Jarvis uses cmux or tmux |
+| `fm-backend-orca*` | orca backend: Jarvis uses cmux or tmux |
+| The `tests-herdr` job and the `real-herdr-gated` family, plus the live Herdr e2e suites | real Herdr lane: Jarvis uses cmux or tmux; the portable Herdr unit tests (`fm-backend-herdr`, `fm-herdr-lab`, `fm-herdr-session-cleanup`, `fm-remote-herdr-guard`) still run because shared backend code calls them |
+| Treehouse lease checks in shared-checkout mode | not dropped: `fm_backend_required_tools` asks for treehouse only in worktree mode, so the bootstrap cases now pin worktree mode instead |
+
+Live opt-in suites for Claude and Codex stay; they skip without their live-capability gate as before.
