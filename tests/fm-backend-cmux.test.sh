@@ -1074,6 +1074,10 @@ sf=bbbbbbbb-1111-1111-1111-111111111111
 win=eeeeeeee-0000-0000-0000-000000000000
 printf '%s\n' "$*" >> "$d/log"
 case "$1" in
+  version)
+    [ "$mode" = confirm-unsupported-version ] && printf 'cmux 0.64.0 (1) [older]\n' \
+      || printf 'cmux 0.65.2 (113) [12023d89f]\n'
+    ;;
   rpc)
     [ "${2:-}" = system.tree ] || exit 2
     reads=$(cat "$d/rpc-reads" 2>/dev/null || printf 0)
@@ -1155,7 +1159,7 @@ case "$1" in
     ;;
   close-workspace)
     if [ "${2:-}" = --help ]; then
-      [ "$mode" = confirm-no-flag ] && printf 'Usage: cmux close-workspace --workspace <id>' \
+      { [ "$mode" = confirm-no-flag ] || [ "$mode" = confirm-no-capability ]; } && printf 'Usage: cmux close-workspace --workspace <id>' \
         || printf 'Usage: cmux close-workspace --workspace <id> [--force]'
       exit 0
     fi
@@ -1164,7 +1168,14 @@ case "$1" in
     case "$mode" in
       error) exit 1 ;;
       noop|post-error) printf OK ;;
-      refuse|confirm-no-flag) printf 'confirmation_required: Workspace has a running process; retry with --force' ;;
+      refuse|confirm-unsupported-version) printf 'confirmation_required: Workspace has a running process; retry with --force' ;;
+      confirm-no-capability) printf 'confirmation_required' ;;
+      confirm-no-flag)
+        case "$*" in
+          *--force*) touch "$d/gone" "$d/forced"; printf OK ;;
+          *) printf 'confirmation_required: Workspace has a running process; retry with --force' ;;
+        esac
+        ;;
       confirm|force-empty)
         case "$*" in
           *--force*) touch "$d/gone" "$d/forced"; printf OK ;;
@@ -1302,13 +1313,26 @@ test_kill_waits_for_native_close_visibility() {
   pass 'fm_backend_cmux_kill: bounded native polling confirms delayed absence without a second close'
 }
 
-test_kill_requires_advertised_confirmation_flag() {
+test_kill_accepts_server_advertised_force() {
   local dir
   dir=$(make_cmux_close_case kill-no-confirm-flag confirm-no-flag)
-  run_cmux_close_case "$dir" fm-close-task && fail 'missing advertised flag must refuse confirmation'
-  assert_equals 1 "$(grep -c '^close-workspace --workspace ' "$dir/log")" 'no flag must mean no retry'
-  assert_absent "$dir/gone" 'unconfirmed workspace was removed'
-  pass 'fm_backend_cmux_kill: a confirmation without a CLI-advertised flag retains the endpoint'
+  run_cmux_close_case "$dir" fm-close-task || fail 'server-advertised force should close the exact owned task'
+  assert_grep --force "$dir/log" 'server-advertised flag was not used'
+  assert_present "$dir/gone" 'server-advertised confirmation did not close the task'
+  pass 'fm_backend_cmux_kill: a server-advertised force works when installed help omits the flag'
+}
+
+test_kill_refuses_unknown_confirmation_capability() {
+  local dir
+  dir=$(make_cmux_close_case kill-no-capability confirm-no-capability)
+  run_cmux_close_case "$dir" fm-close-task && fail 'unknown confirmation capability must refuse'
+  assert_equals 1 "$(grep -c '^close-workspace --workspace ' "$dir/log")" 'unknown capability must mean no retry'
+  assert_absent "$dir/gone" 'unknown capability removed the task'
+  dir=$(make_cmux_close_case kill-unsupported-version confirm-unsupported-version)
+  run_cmux_close_case "$dir" fm-close-task && fail 'unverified client build must refuse confirmation'
+  assert_equals 1 "$(grep -c '^close-workspace --workspace ' "$dir/log")" 'unverified build must mean no retry'
+  assert_absent "$dir/gone" 'unverified client removed the task'
+  pass 'fm_backend_cmux_kill: unknown server capability or unpinned client retains the endpoint'
 }
 
 test_kill_never_forces_unbound_or_shared_workspace() {
@@ -1488,7 +1512,8 @@ test_liveness_refuses_incomplete_inventory
 test_kill_closes_workspace_directly_when_not_last
 test_kill_confirmation_and_refusal
 test_kill_waits_for_native_close_visibility
-test_kill_requires_advertised_confirmation_flag
+test_kill_accepts_server_advertised_force
+test_kill_refuses_unknown_confirmation_capability
 test_kill_adds_sibling_when_last_in_window
 test_kill_never_forces_unbound_or_shared_workspace
 test_kill_recovers_stale_target_by_label

@@ -1425,7 +1425,7 @@ test_cmux_teardown_keeps_the_record_until_the_workspace_is_gone() {
   rc=$?
   set -e
   [ "$rc" -ne 0 ] || fail "teardown reported success while the cmux workspace stayed open: $(cat "$dir/confirm.out")"
-  assert_grep "no confirmation flag" "$dir/confirm.err" "the surviving cmux workspace was not reported"
+  assert_grep "confirmation capability is unverified" "$dir/confirm.err" "the surviving cmux workspace was not reported"
   assert_present "$dir/home/state/$id.meta" "teardown removed the record naming a cmux workspace that is still open"
   jq -e 'any(.workspaces[]; .id == "WS-TASK")' "$dir/cmux-workspaces.json" >/dev/null \
     || fail "the fixture lost the surviving workspace, so the case proves nothing"

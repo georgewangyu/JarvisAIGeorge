@@ -771,10 +771,19 @@ fm_backend_cmux_await_closed() {  # <workspace-id> <scoped-title-or-empty>
   return 1
 }
 
-# Never guess a force/confirmation flag for a connected CLI build.
-fm_backend_cmux_close_confirm_flag() {
-  fm_backend_cmux_cli close-workspace --help 2>&1 \
-    | grep -oE -- '--(yes|force|confirm|no-confirm)([^A-Za-z-]|$)' | head -1 | grep -oE -- '--[a-z-]+'
+# The pinned 0.65.2 client accepts literal --force for workspace.close, even
+# though its close-workspace help omits it. Require both that exact client build
+# and the connected server's confirmation_required + retry instruction. The
+# 0.64 client does not implement this protocol; unknown builds fail closed.
+fm_backend_cmux_close_confirm_flag() {  # <confirmation-reply>
+  local version
+  case "$1" in
+    *confirmation_required*'retry with --force'*) : ;;
+    *) return 1 ;;
+  esac
+  version=$(fm_backend_cmux_cli version 2>/dev/null) || return 1
+  [ "$version" = 'cmux 0.65.2 (113) [12023d89f]' ] || return 1
+  printf '%s' --force
 }
 
 # fm_backend_cmux_kill: remove the task's whole workspace and prove absence.
@@ -849,8 +858,8 @@ fm_backend_cmux_kill() {  # <target> [unused] [expected-label]
         || { echo "error: cmux confirmation refused for changed or shared task surfaces in $wsid" >&2; return 1; }
       inventory=$(fm_backend_cmux_close_inventory) || return 1
       fm_backend_cmux_owned_for_close "$inventory" "$wsid" "$sfid" "$win" "$title" || return 1
-      flag=$(fm_backend_cmux_close_confirm_flag)
-      [ -n "$flag" ] || { echo "error: cmux CLI advertises no confirmation flag for task workspace $wsid; retaining task records" >&2; return 1; }
+      flag=$(fm_backend_cmux_close_confirm_flag "$out")
+      [ -n "$flag" ] || { echo "error: cmux client/server confirmation capability is unverified for task workspace $wsid; retaining task records" >&2; return 1; }
       fm_backend_cmux_cli close-workspace --workspace "$wsid" --window "$win" "$flag" >/dev/null 2>&1 || true
       fm_backend_cmux_await_closed "$wsid" "$title" && return 0
       ;;

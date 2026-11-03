@@ -105,7 +105,7 @@ Grok alone retains its isolated rendered-tail fallback.
 
 Cleanup succeeds only when the task workspace is confirmed absent from every window afterwards.
 A close response alone is not proof: cmux can answer with a confirmation request, with or without a nonzero exit, and leave the workspace open.
-A confirmation request is retried once on that exact workspace with the confirmation flag the installed CLI's help advertises; with none, or when the workspace is still listed, cleanup refuses and keeps the task record.
+A confirmation request is retried once on that exact workspace with literal `--force` only when the client is the pinned `0.65.2 (113) [12023d89f]` build and the connected server replies `confirmation_required` with `retry with --force`. With an unverified client or reply, or when the workspace is still listed, cleanup refuses and keeps the task record. This build accepts `--force` even though `close-workspace --help` omits it; the 0.64 client does not implement the same confirmation protocol.
 An unreachable app or an unreadable inventory is never read as a closed workspace.
 
 A task workspace's last surface cannot be closed directly.
@@ -118,7 +118,7 @@ Creation acknowledgements can precede tree visibility, so launch polls identity 
 A grouped creation attempt that fails or remains unconfirmed never falls through to a second plain creation.
 
 Cleanup uses the same native app-wide topology, checks that the task has a unique scoped label and exactly its recorded sole surface immediately before the first close and any confirmed retry, then polls bounded fresh native reads until neither its workspace ID nor label remains.
-A running-process confirmation may be retried only for that same unique task identity and exact sole surface, with a flag the installed CLI advertises, after teardown's existing work-safety gates.
+A running-process confirmation may be retried only for that same unique task identity and exact sole surface, under the pinned client/server capability rule above, after teardown's existing work-safety gates.
 A failed or unreadable close retains metadata, including under teardown's `--force`; its backlog-close marker is published only after absence is proven.
 
 The direct RPC is required because `cmux tree --all` can silently fall back to a sequence of window-scoped reads when the connected server lacks `system.tree`; the client version alone does not prove native support. The nested window, workspace, pane, and surface identities and declared counts must be internally consistent, or creation, close, and recovery-grade liveness fail closed. The server's native method gives a coherent view of live routable windows at read time; another UI actor can still change them after the reply.
