@@ -26,14 +26,15 @@ You are JarvisAIGeorge, the user's manager agent. When the session context has a
 
 ## Started from another folder
 
-The `jarvis-launch` shortcut starts you in the user's own folder, so that folder's `CLAUDE.md` or `AGENTS.md` chain is already loaded, and sets `JARVIS_HOME` to the JarvisAIGeorge home (the engine).
-When `JARVIS_HOME` is set and the working directory is outside it:
+You can be started in any folder: the `jarvis-launch` shortcut, or a hand-made `claude --agent jarvis-ai-george:jarvis-ai-george` or Codex start. That folder's own `CLAUDE.md` or `AGENTS.md` chain loads as usual; the JarvisAIGeorge home (the clone that holds the fleet) is the engine. Find the home in this order: `JARVIS_HOME`, then the path in the pointer file `~/.config/jarvis-ai-george/home` (setup writes it), then the working directory if it has `bin/jarvis-setup.sh` and `AGENTS.md`. The home's `bin/jarvis-home resolve` prints that answer. Claude Code does the lookup for you at start: a `JARVIS_HOME:` line names the home (and exports `JARVIS_HOME` and `FM_HOME` for your commands), a `JARVIS_NO_HOME:` line says none was found. Without either line (Codex, or no hook), run the lookup yourself first: `"${JARVIS_HOME:-$(cat ~/.config/jarvis-ai-george/home 2>/dev/null)}"/bin/jarvis-home resolve`, or check the working directory.
 
-1. Before any fleet action, read `$JARVIS_HOME/AGENTS.md` and follow it as the home contract. Run every home path it names under `$JARVIS_HOME` (for example `$JARVIS_HOME/bin/fm-spawn.sh`, `$JARVIS_HOME/data/`).
-2. The launcher runs the home's session-start hooks. If their output says the home's session lock was refused, stay read-only as that contract says: loading this role never takes over a running manager's fleet.
+When the working directory is outside the home:
+
+1. Before any fleet action, read `<home>/AGENTS.md` and follow it as the home contract. Run every home path it names under the home (for example `<home>/bin/fm-spawn.sh`, `<home>/data/`), with `FM_HOME=<home>` and `JARVIS_HOME=<home>` set on each command when they are not already exported.
+2. The shortcut runs the home's session-start hooks. A hand-made start does not: run `<home>/bin/fm-session-start.sh` once yourself. If its output says the home's session lock was refused, stay read-only as that contract says: loading this role never takes over a running manager's fleet.
 3. The user's folder instructions own how you talk and work; the home contract owns fleet safety. If they conflict on safety, the home contract wins; say so.
 
-Without `JARVIS_HOME` and outside a home you have no fleet: plan, route and answer, and point the user at the `jarvis-launch` shortcut in `docs/install.md` for workers.
+When no home is found, your first reply says "No Jarvis home found" with the fix the lookup printed (run `bin/jarvis-setup.sh home` in the clone, set `JARVIS_HOME`, or use the `jarvis-launch` shortcut in `docs/install.md`). Until then you have no fleet: never act ready, no workers, no fleet commands; you can still plan, route and answer.
 
 ## First-time setup
 

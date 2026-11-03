@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# bin/jarvis-home - find the JarvisAIGeorge home from any folder (JARVIS_HOME,
+# then the pointer file, then the current folder). A thin wrapper: the resolver
+# itself ships in the core plugin, plugins/jarvis-ai-george/hooks/jarvis-home.sh,
+# which owns the order, the messages and the usage.
+exec bash "$(cd "$(dirname "$0")/.." && pwd)/plugins/jarvis-ai-george/hooks/jarvis-home.sh" "$@"

@@ -50,6 +50,13 @@
 #                                       how Jarvis addresses the user, in the
 #                                       gitignored config/user-address (none: no
 #                                       special address, just "you")
+#   bin/jarvis-setup.sh home            record this clone as the home in the
+#                                       user-level pointer file
+#                                       (~/.config/jarvis-ai-george/home), so a
+#                                       session started in any folder finds it.
+#                                       detect records it when no pointer exists
+#                                       or the pointer is stale; `home` also
+#                                       replaces a pointer to another clone
 #   bin/jarvis-setup.sh name <name>|default
 #                                       the manager's name, in the gitignored
 #                                       config/manager-name (default
@@ -74,7 +81,8 @@
 # jarvis-ai-george or the extension's own (george-coding-agent).
 #
 # Nothing here installs software on its own: detect, status and update-check
-# only read; every other verb is run by the manager after the user approves.
+# only read (detect also records the home pointer when none is set); every
+# other verb is run by the manager after the user approves.
 # Lines that need action start with JARVIS_FIRST_RUN:, JARVIS_SETUP: or
 # JARVIS_UPDATE: and name docs/install.md for help.
 
@@ -300,8 +308,31 @@ manager_name() {
   printf '%s' "${n:-$DEFAULT_MANAGER_NAME}"
 }
 
+POINTER=$(bash "$ROOT/plugins/jarvis-ai-george/hooks/jarvis-home.sh" pointer 2>/dev/null)
+
+write_pointer() {
+  [ -n "$POINTER" ] || return 1
+  mkdir -p "$(dirname "$POINTER")" && printf '%s\n' "$(cd "$ROOT" && pwd -P)" > "$POINTER"
+}
+
+# Record this clone when no pointer exists or it names a clone that is gone.
+# A pointer to another live home is the user's choice and stays.
+ensure_pointer() {
+  local p=""
+  [ -n "$POINTER" ] || return 0
+  [ -f "$POINTER" ] && IFS= read -r p < "$POINTER"
+  if [ -n "$p" ] && [ -f "$p/bin/jarvis-setup.sh" ] && [ -f "$p/AGENTS.md" ]; then return 0; fi
+  write_pointer 2>/dev/null || true
+}
+
+cmd_home() {
+  write_pointer || die "could not write the home pointer"
+  echo "ok: home $(cd "$ROOT" && pwd -P) recorded in $POINTER (sessions started in any folder find it)"
+}
+
 cmd_detect() {
   local gaps=() b p t c n
+  ensure_pointer
   n=$(manager_name)
   [ "$n" != "$DEFAULT_MANAGER_NAME" ] && echo "JARVIS_MANAGER_NAME: $n"
   if [ -n "${CMUX_WORKSPACE_ID:-}" ] && [ "${JARVIS_MANAGER_TAB:-on}" != off ]; then
@@ -704,6 +735,7 @@ case "${1:-}" in
   shortcut) shift; cmd_shortcut "$@" ;;
   address) shift; cmd_address "$@" ;;
   name) shift; cmd_name "$@" ;;
+  home) cmd_home ;;
   manager-tab) cmd_manager_tab ;;
   *) awk 'NR>1 && !/^#/ {exit} NR>1 {sub(/^# ?/, ""); print}' "$0"; exit 2 ;;
 esac

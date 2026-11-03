@@ -18,6 +18,7 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_ROOT=$(fm_test_tmproot jarvis-plugin-versioning-tests)
+export JARVIS_HOME_POINTER="$TMP_ROOT/home-pointer"
 HOOKS="$ROOT/plugins/jarvis-ai-george/hooks/hooks.json"
 
 test_hook_commands_self_contained() {

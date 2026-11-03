@@ -82,12 +82,21 @@ What `jarvis-launch` does:
 - If another session already holds the home's lock, the new one stays read-only. Starting Jarvis never takes over a running fleet.
 - Codex: `jarvis-launch --codex` starts `codex` in your folder with a first prompt that loads `$role-jarvis` and the home contract. Verify this on your own machine.
 
-Loading the `role-jarvis` skill by itself, outside a home and without the launcher, gives you the manager without a fleet: it plans and routes, but runs no hooks, takes no lock and starts no workers.
+Started by hand instead (a plain `claude --agent jarvis-ai-george:jarvis-ai-george`, or Codex loading `$role-jarvis`, in any folder), Jarvis still finds the clone:
+
+- Setup records the clone once in `~/.config/jarvis-ai-george/home` (the session-start check writes it when it is missing or names a deleted clone; `bin/jarvis-setup.sh home` in a clone makes that clone the home).
+- The lookup order is `JARVIS_HOME`, then that pointer, then the current folder if it is a clone. `bin/jarvis-home resolve` prints the answer.
+- Claude Code: the core plugin's start hook does the lookup for the manager, exports `JARVIS_HOME` and `FM_HOME` into the session, and tells Jarvis to run the home's session start (which never takes another manager's lock). Codex: the role runs the same lookup itself (verify on your own machine).
+- No clone found, or the pointer names a deleted clone: Jarvis's first reply says "No Jarvis home found" with the fix, and it starts no workers until a home is found.
+- Two clones: the pointer names one; pick the other for one session with `JARVIS_HOME=<clone>`, or switch for good with `bin/jarvis-setup.sh home` in it.
+
+The shortcut stays the recommended start: it also passes the clone's guard hooks.
 
 Checks:
 
 - [ ] In your folder, `jarvis` starts a session whose first answer knows your folder's instructions and says it is Jarvis.
 - [ ] The setup line or update check appears, and `echo $JARVIS_HOME` in that session prints the clone path.
+- [ ] A hand-made `claude --agent jarvis-ai-george:jarvis-ai-george` in another folder prints a `JARVIS_HOME:` line, and with the pointer moved away it says "No Jarvis home found".
 
 ## Updates
 

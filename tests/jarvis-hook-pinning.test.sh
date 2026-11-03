@@ -18,6 +18,7 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_ROOT=$(fm_test_tmproot jarvis-hook-pinning-tests)
+export JARVIS_HOME_POINTER="$TMP_ROOT/home-pointer"
 NOTICE="$TMP_ROOT/notice"
 export JARVIS_NOTICE_STATE="$NOTICE"
 fm_git_identity

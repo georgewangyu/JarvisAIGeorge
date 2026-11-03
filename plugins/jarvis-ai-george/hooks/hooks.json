@@ -1,5 +1,5 @@
 {
-  "description": "Jarvis sidebar in cmux (activity, current tool, subagents, PR and issue pills; no-op outside cmux) and a once-per-session update notice. Every command runs only files in this plugin folder and exits 0 quietly if the folder is gone.",
+  "description": "Jarvis sidebar in cmux (activity, current tool, subagents, PR and issue pills; no-op outside cmux) a once-per-session update notice, and, for the manager started outside a home, the home lookup (JARVIS_HOME, the pointer file, or \"No Jarvis home found\"). Every command runs only files in this plugin folder and exits 0 quietly if the folder is gone.",
   "hooks": {
     "SessionStart": [
       {
@@ -7,6 +7,11 @@
           {
             "type": "command",
             "command": "f=\"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-sidebar.sh\"; [ -f \"$f\" ] || { cat >/dev/null 2>&1; exit 0; }; exec bash \"$f\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "f=\"${CLAUDE_PLUGIN_ROOT}/hooks/jarvis-home.sh\"; [ -f \"$f\" ] || { cat >/dev/null 2>&1; exit 0; }; exec bash \"$f\" hook",
             "timeout": 5
           }
         ]

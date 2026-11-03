@@ -10,6 +10,7 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_ROOT=$(fm_test_tmproot jarvis-setup-tests)
+export JARVIS_HOME_POINTER="$TMP_ROOT/home-pointer"
 SETUP="$ROOT/bin/jarvis-setup.sh"
 
 run() {  # <home> <claude-dir> <args...>

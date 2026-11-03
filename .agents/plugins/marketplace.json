@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "jarvis-ai-george",
-      "version": "0.3.6",
+      "version": "0.3.7",
       "description": "Jarvis core: the manager agent you talk to, the extension catalog, and the brainstorm, grill-me, principles and mistake-miner skills. Planning, specs, coding and review come from extensions such as GeorgeCodingAgent.",
       "source": {
         "source": "local",

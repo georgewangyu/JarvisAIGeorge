@@ -11,6 +11,7 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_ROOT=$(fm_test_tmproot jarvis-launch-tests)
+export JARVIS_HOME_POINTER="$TMP_ROOT/home-pointer"
 LAUNCH="$ROOT/bin/jarvis-launch"
 
 # A stub CLI that records its cwd, environment and arguments.
