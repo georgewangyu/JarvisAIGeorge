@@ -258,7 +258,12 @@ test_bootstrap_reporting() {
     [ -n "$label" ] || continue
     n=$((n + 1))
     case_dir="$TMP_ROOT/case-$n"
-    mkdir -p "$case_dir/home"
+    mkdir -p "$case_dir/home/config"
+    # The treehouse lease contract is a worktree-mode requirement; this fork's
+    # default shared-checkout mode needs no treehouse (fm_backend_required_tools).
+    case "$label" in
+      treehouse*) printf 'worktree\n' > "$case_dir/home/config/workspace-isolation" ;;
+    esac
     if [ "$backend" != "-" ]; then
       mkdir -p "$case_dir/home/config"
       printf '%s\n' "$backend" > "$case_dir/home/config/backlog-backend"
