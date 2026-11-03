@@ -321,7 +321,7 @@ STUB
   for mode in no-mistakes direct-PR local-only; do
     id="promote-dod-$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')"
     meta="$home/state/$id.meta"
-    printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$meta"
+    printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nworkspace_isolation=worktree\n' "$id" > "$meta"
     FM_HOME="$home" "$BRIEF" "$id" fixture-project --scout >/dev/null 2>&1 \
       || fail "$mode: scout brief generation should succeed"
     fill_brief_subsections "$home/data/$id/brief.md" \
@@ -434,6 +434,40 @@ EOF
 # Spawn and promotion refuse leftover Task-subsection placeholders through the
 # public brief/spawn/promote path. Filling both subsections lets the spawn
 # delivery checks proceed (the fake tmux still fails later).
+test_shared_checkout_scout_and_promotion_keep_the_checkout() {
+  local home id meta brief instr
+  home="$TMP_ROOT/shared-promote/home"
+  mkdir -p "$home/state" "$home/data" "$home/config"
+  id="shared-scout"
+  meta="$home/state/$id.meta"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nworkspace_isolation=shared-checkout\n' "$id" > "$meta"
+  FM_HOME="$home" "$BRIEF" "$id" fixture-project --scout >/dev/null 2>&1 || fail "shared scout brief generation should succeed"
+  brief="$home/data/$id/brief.md"
+  assert_grep "existing shared checkout" "$brief" "shared scout brief must say it runs in the shared checkout"
+  assert_grep "do not create a branch or Git worktree" "$brief" "shared scout brief must forbid branch and worktree creation"
+  assert_grep "scratch directory outside this checkout" "$brief" "shared scout brief must keep scratch work outside the checkout"
+  assert_no_grep "disposable git worktree" "$brief" "shared scout brief must not claim a disposable worktree"
+  assert_no_grep "discarded at teardown" "$brief" "shared scout brief must not promise scratch disposal"
+  fill_brief_subsections "$brief" "Ship the shared fix." "Keep the checkout intact."
+  FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode local-only --yolo off >/dev/null 2>&1 \
+    || fail "shared-checkout promotion should succeed"
+  instr="$home/data/$id/ship-instructions.md"
+  assert_grep "canonical repository checkout you were launched in" "$instr" "promotion must verify the shared checkout"
+  assert_grep "preserve every uncommitted file you did not create" "$instr" "promotion must preserve uncommitted files"
+  assert_grep "do not reset, stash, clean, or discard anything" "$instr" "promotion must forbid resets and discards"
+  assert_no_grep "git checkout -b" "$instr" "shared-checkout promotion must not create a branch"
+  assert_no_grep "clean default-branch base" "$instr" "shared-checkout promotion must not reset to a clean base"
+
+  id="worktree-scout"
+  meta="$home/state/$id.meta"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nworkspace_isolation=worktree\n' "$id" > "$meta"
+  printf 'worktree\n' > "$home/config/workspace-isolation"
+  FM_HOME="$home" "$BRIEF" "$id" fixture-project --scout >/dev/null 2>&1 || fail "worktree scout brief generation should succeed"
+  assert_grep "disposable git worktree" "$home/data/$id/brief.md" "explicit worktree mode keeps the scout laboratory"
+  rm -f "$home/config/workspace-isolation"
+  pass "shared-checkout scout briefs and promotions keep the checkout; worktree mode keeps its isolation text"
+}
+
 test_spawn_and_promote_require_filled_task_subsections() {
   local rec home proj fakebin out status id brief meta intent_body spec_body authorized
   rec=$(make_home subsections)
@@ -649,7 +683,7 @@ EOF
 
   id=promote-filled-e2
   meta="$home/state/$id.meta"
-  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$meta"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nworkspace_isolation=worktree\n' "$id" > "$meta"
   FM_HOME="$home" "$BRIEF" "$id" proj --scout >/dev/null 2>&1 \
     || fail "filled promote scout brief should scaffold"
   fill_brief_subsections "$home/data/$id/brief.md" \
@@ -713,7 +747,7 @@ EOF
 
   id=promote-legacy-e3
   meta="$home/state/$id.meta"
-  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$meta"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nworkspace_isolation=worktree\n' "$id" > "$meta"
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<'EOF'
 You are a crewmate.
@@ -892,4 +926,5 @@ test_promote_refuses_a_symlinked_task_record
 test_promotion_delivers_the_real_definition_of_done
 test_project_mode_maps_the_conditional_policy
 test_spawn_and_promote_require_filled_task_subsections
+test_shared_checkout_scout_and_promotion_keep_the_checkout
 echo "# all fm-task-delivery tests passed"

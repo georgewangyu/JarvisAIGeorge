@@ -5,9 +5,12 @@
 # again. Promotion also writes the crewmate's ship instructions to
 # data/<task-id>/ship-instructions.md, appends that same superseding contract to
 # data/<task-id>/brief.md for future relaunches, and prints the fm-send.sh command
-# that delivers it to the current worker. Those instructions carry the
-# scratch-state inventory, the clean
-# default-branch base, the fm/<task-id> branch, and - rendered from
+# that delivers it to the current worker. Those instructions follow the task's
+# recorded workspace-isolation mode: in worktree mode they carry the
+# scratch-state inventory, the clean default-branch base, and the
+# fm/<task-id> branch; in shared-checkout mode they preserve the shared
+# checkout's uncommitted files, forbid branch creation, reset, and discard, and
+# keep scratch work out. Both carry - rendered from
 # bin/fm-dod-lib.sh, the single owner an ordinary ship brief also uses - the
 # mode-specific Definition of done, so a promoted worker receives exactly the same
 # delivery contract as a briefed one, including the no-mistakes mode's ask-user
@@ -49,6 +52,8 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 . "$SCRIPT_DIR/fm-secondmate-parent-lib.sh"
 # shellcheck source=bin/fm-secondmate-registry-lib.sh
 . "$SCRIPT_DIR/fm-secondmate-registry-lib.sh"
+# shellcheck source=bin/fm-workspace-lib.sh
+. "$SCRIPT_DIR/fm-workspace-lib.sh"
 
 MODE=
 YOLO=
@@ -178,6 +183,24 @@ PROMOTION_ASK_USER_BLOCK=
 if [ "$MODE" = no-mistakes ]; then
   PROMOTION_ASK_USER_BLOCK=$(fm_ask_user_escalation_block "$DATA" "$ID")
 fi
+# The task's own isolation mode, recorded at spawn; the home's configured mode
+# only for a record that predates the field.
+PROMOTE_ISOLATION=$(sed -n 's/^workspace_isolation=//p' "$META" | tail -1)
+case "$PROMOTE_ISOLATION" in
+  shared-checkout|worktree) ;;
+  *) PROMOTE_ISOLATION=$(fm_workspace_isolation_mode "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}") || exit 1 ;;
+esac
+if [ "$PROMOTE_ISOLATION" = shared-checkout ]; then
+IFS= read -r -d '' PROMOTION_SHIP_SPEC <<EOF || true
+If these promotion steps were already completed before a relaunch, continue from the checkout's current state; do not repeat them destructively.
+1. **Verify location before anything else.** Run \`pwd -P\` and \`git rev-parse --show-toplevel\`; both must resolve to the canonical repository checkout you were launched in. This checkout is shared and not isolated: if another edit is in your way, stop with \`blocked: shared checkout conflict\`.
+2. Inspect \`git status --short\` before changing anything and preserve every uncommitted file you did not create; do not create a branch or Git worktree, and do not reset, stash, clean, or discard anything.
+3. Make the intended fix changes in place in this checkout. Scratch work from the investigation stays outside the checkout and is not carried in.
+4. If you reproduced a bug, turn that reproduction into a regression test.
+5. Treat the scout-time Firstmate spec and any unmarked legacy \`# Task\` text as investigation context, not captain intent or current ship-time instructions.
+6. Everything else in your original instructions carries over unchanged: the status protocol; the instruction inbox and its acknowledgement; the escalation rules, including ask-user; and every safety rule, except where the current delivery contract below explicitly replaces scout-only delivery rules.
+EOF
+else
 IFS= read -r -d '' PROMOTION_SHIP_SPEC <<EOF || true
 If these promotion steps were already completed before a relaunch, preserve the existing \`fm/$ID\` branch and continue from its current state; do not repeat them destructively.
 1. **Verify isolation before anything else.** Run \`pwd -P\` and \`git rev-parse --show-toplevel\`; both must resolve to the disposable task worktree you were launched in, such as a treehouse pool path or an Orca-managed worktree, not the primary checkout firstmate operates from. If either does not resolve to the worktree you were launched in, stop and escalate to firstmate.
@@ -188,6 +211,7 @@ If these promotion steps were already completed before a relaunch, preserve the 
 6. Treat the scout-time Firstmate spec and any unmarked legacy \`# Task\` text as investigation context, not captain intent or current ship-time instructions.
 7. Everything else in your original instructions carries over unchanged: the status protocol; the instruction inbox and its acknowledgement; the escalation rules, including ask-user; and every safety rule, except where the current delivery contract below explicitly replaces scout-only delivery rules.
 EOF
+fi
 promote_delivery_contract() {
   cat <<EOF
 # Current delivery mode contract

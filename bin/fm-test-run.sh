@@ -103,6 +103,11 @@
 #   branches, and the primary is the checkout every linked worktree resolves
 #   against. Inspection modes execute nothing and stay available, and a run with
 #   no FM_TASK_ID set is unchanged.
+#   The refusal follows the task's own workspace-isolation mode:
+#   FM_WORKSPACE_ISOLATION when set, else workspace_isolation= in
+#   $FM_HOME/state/<FM_TASK_ID>.meta, else worktree (bin/fm-spawn.sh marks only
+#   worktree-mode workers). A shared-checkout task works in the primary checkout
+#   by design, so it is never refused for being there.
 #
 # Exit status is non-zero if any selected script exits non-zero, a configured
 # --fail-on-gate-skip token appears, the measured duration exceeds
@@ -239,10 +244,24 @@ now_iso() {
 # reached through a different path. When git resolves neither directory - a
 # non-repository fixture, a detached copy - nothing proves this is the primary,
 # so the run proceeds.
+task_isolation_mode() {  # <task-id>
+  local mode=${FM_WORKSPACE_ISOLATION:-} meta line
+  if [ -z "$mode" ] && [ -n "${FM_HOME:-}" ]; then
+    meta="$FM_HOME/state/$1.meta"
+    if [ -f "$meta" ]; then
+      while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in workspace_isolation=*) mode=${line#workspace_isolation=} ;; esac
+      done < "$meta"
+    fi
+  fi
+  case "$mode" in shared-checkout|worktree) printf '%s' "$mode" ;; *) printf 'worktree' ;; esac
+}
+
 refuse_primary_checkout_for_task() {
   local task_id git_dir common_dir top
   task_id=${FM_TASK_ID:-}
   [ -n "$task_id" ] || return 0
+  [ "$(task_isolation_mode "$task_id")" = worktree ] || return 0
   git_dir=$(git -C "$ROOT" rev-parse --absolute-git-dir 2>/dev/null) \
     && git_dir=$(cd "$git_dir" 2>/dev/null && pwd -P) || git_dir=
   common_dir=$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) \

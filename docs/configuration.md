@@ -188,6 +188,8 @@ Shared-checkout mode is not isolation.
 Concurrent workers can edit the same files, conflict, or observe each other's partial changes, so use it only when the operator accepts that coordination model or serializes overlapping work.
 Shared-checkout cleanup closes the recorded worker endpoint and retires Firstmate task records, but it never resets, removes, branches, returns, or otherwise treats the shared checkout as disposable.
 Because the worker runs on the existing checkout, generated ship instructions explicitly say not to create a branch or Git worktree.
+Scout instructions in this mode keep the checkout untouched (no edits, commits, stashes, resets, branches, or worktrees) and send experiments to a scratch directory outside it, and a promotion follows the task's recorded `workspace_isolation=`: it preserves uncommitted files and makes the fix in place instead of resetting to a clean base and branching.
+`bin/fm-test-run.sh` refuses the primary checkout only for a worktree-mode task; a shared-checkout task (`FM_WORKSPACE_ISOLATION`, or its record) runs there by design.
 Orca keeps its own backend-managed worktree lifecycle and secondmate homes keep their home provisioning lifecycle; this setting does not make runtime backends share endpoint ownership or let cmux and Herdr adopt each other's tasks.
 
 ## Away-mode supervisor backend (FM_SUPERVISOR_BACKEND / FM_SUPERVISOR_TARGET)

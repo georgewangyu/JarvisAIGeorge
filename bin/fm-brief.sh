@@ -18,7 +18,8 @@
 #        fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
-#   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
+#   data/<task-id>/report.md (no branch, no push, no PR); in worktree mode the
+#   worktree is scratch, in shared-checkout mode the checkout stays untouched.
 #   It offers the Lavish review loop only when `fm-bootstrap.sh lavish-compatible`
 #   confirms the supported lavish-axi floor; otherwise it asks for a text report.
 #   --secondmate writes a persistent secondmate charter. The project list
@@ -51,9 +52,11 @@
 # "Delivery contract: mode=<mode>" line. bin/fm-spawn.sh reads that line and refuses
 # to launch a ship task whose explicit --mode disagrees, so an adjusted brief and the
 # recorded task metadata cannot drift apart.
-# Ship briefs follow config/workspace-isolation: shared-checkout briefs forbid
-# branch and worktree creation, while explicit worktree-mode briefs retain the
-# worktree-isolation assertion before the branch step.
+# Ship and scout briefs follow config/workspace-isolation: shared-checkout
+# briefs forbid branch and worktree creation (a shared-checkout scout also
+# changes nothing in the checkout and keeps scratch work outside it), while
+# explicit worktree-mode briefs retain the worktree-isolation assertion and the
+# disposable-worktree scout laboratory.
 # --mode is refused on scout and secondmate scaffolds: a scout's deliverable is a
 # report rather than a merge, and a charter is not a delivery contract.
 # There is no --yolo flag here. The worker never owns merge decisions, so yolo is
@@ -363,6 +366,22 @@ EOF
 TASK_SECTION=${TASK_SECTION%$'\n'}
 
 if [ "$KIND" = scout ]; then
+SCOUT_ISOLATION_MODE=$(fm_workspace_isolation_mode "${FM_CONFIG_OVERRIDE:-${FM_HOME:-$FM_ROOT}/config}") || exit 1
+if [ "$SCOUT_ISOLATION_MODE" = shared-checkout ]; then
+  SCOUT_SETUP="You are in the existing shared checkout of $REPO.
+This is a SCOUT task: the deliverable is a written report, not a PR.
+Shared-checkout mode has no isolation: this checkout is shared with the captain and other workers and nothing in it is discarded at cleanup.
+Read and run freely, but do not edit, commit, stash, reset, clean, or check out anything here, and do not create a branch or Git worktree; leave every existing file and uncommitted change exactly as you found it.
+When an experiment needs edits or scratch commits, copy what you need to a scratch directory outside this checkout (for example under \\${TMPDIR:-/tmp}) and work there.
+The report is the only thing that survives, so anything worth keeping must be in it."
+  SCOUT_RULE2="2. Change nothing in this shared checkout; the only files you may write are the report, the status file below, and scratch copies outside the checkout."
+else
+  SCOUT_SETUP="You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.
+This is a SCOUT task: the deliverable is a written report, not a PR.
+The worktree is your laboratory - install, run, edit, and make scratch commits freely; all of it is discarded at teardown.
+The report is the only thing that survives, so anything worth keeping must be in it."
+  SCOUT_RULE2="2. Stay inside this worktree; the only files you may write outside it are the report and the status file below."
+fi
 if "$SCRIPT_DIR/fm-bootstrap.sh" lavish-compatible >/dev/null 2>&1; then
   LAVISH_LINE='If your deliverable is a visual artifact the captain will review and iterate on, you may host the Lavish review loop yourself (poll, revise, re-serve, staying alive) instead of handing it back to firstmate.'
 else
@@ -376,14 +395,11 @@ $TASK_SECTION
 $HERDR_SECTION
 
 # Setup
-You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.
-This is a SCOUT task: the deliverable is a written report, not a PR.
-The worktree is your laboratory - install, run, edit, and make scratch commits freely; all of it is discarded at teardown.
-The report is the only thing that survives, so anything worth keeping must be in it.
+$SCOUT_SETUP
 
 # Rules
 1. Never push to any remote and never open a PR.
-2. Stay inside this worktree; the only files you may write outside it are the report and the status file below.
+$SCOUT_RULE2
 3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
 4. Report status by appending one line:
    \`echo "{state}: {one short line}" >> $STATUS_FILE\`

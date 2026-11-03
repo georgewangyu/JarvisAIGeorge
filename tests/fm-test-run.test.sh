@@ -236,6 +236,23 @@ test_task_marker_refuses_the_primary_checkout() {
     || { rm -rf "$tmp"; fail "--list under a task marker printed: $out"; }
   assert_absent "$repo/ran" "--list must not execute a suite"
 
+  # Shared-checkout mode: the primary checkout IS the assigned placement.
+  rm -f "$repo/ran"
+  FM_WORKSPACE_ISOLATION=shared-checkout FM_TASK_ID=probe-task "$repo/bin/fm-test-run.sh" tests/probe.test.sh >/dev/null 2>&1 \
+    || { rm -rf "$tmp"; fail "a shared-checkout task must run in the primary checkout"; }
+  assert_present "$repo/ran" "the shared-checkout run did not execute its suite"
+  mkdir -p "$tmp/home/state"
+  printf 'workspace_isolation=shared-checkout\n' > "$tmp/home/state/probe-task.meta"
+  rm -f "$repo/ran"
+  env -u FM_WORKSPACE_ISOLATION FM_HOME="$tmp/home" FM_TASK_ID=probe-task "$repo/bin/fm-test-run.sh" tests/probe.test.sh >/dev/null 2>&1 \
+    || { rm -rf "$tmp"; fail "a task whose record says shared-checkout must run in the primary checkout"; }
+  assert_present "$repo/ran" "the record-resolved shared-checkout run did not execute"
+  printf 'workspace_isolation=worktree\n' > "$tmp/home/state/probe-task.meta"
+  rm -f "$repo/ran"
+  env -u FM_WORKSPACE_ISOLATION FM_HOME="$tmp/home" FM_TASK_ID=probe-task "$repo/bin/fm-test-run.sh" tests/probe.test.sh >/dev/null 2>&1 \
+    && { rm -rf "$tmp"; fail "a worktree-mode task must still be refused in the primary checkout"; }
+  assert_absent "$repo/ran" "the refused worktree-mode run still executed"
+
   rm -rf "$tmp"
   pass "a task marker refuses execution in the primary checkout and leaves worktrees and inspection alone"
 }

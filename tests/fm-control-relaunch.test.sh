@@ -993,6 +993,7 @@ test_promoted_scout_relaunch_receives_the_current_delivery_contract() {
       echo "project=$dir/proj"
       echo "harness=claude"
       echo "kind=scout"
+      echo "workspace_isolation=worktree"
       echo "tasktmp=/tmp/fm-$id"
       echo "model=default"
       echo "effort=default"

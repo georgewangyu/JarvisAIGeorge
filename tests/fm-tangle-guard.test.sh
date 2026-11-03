@@ -127,7 +127,9 @@ test_bootstrap_line() {
 test_brief_assertion_precedes_branch() {
   local home brief iso br
   home="$TMP_ROOT/brief-home"
-  mkdir -p "$home/data"
+  mkdir -p "$home/data" "$home/config"
+  # This guard is the worktree-mode contract; shared-checkout is the default.
+  printf 'worktree\n' > "$home/config/workspace-isolation"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" tangle-brief-cc3 alpha --mode no-mistakes >/dev/null 2>&1
   brief="$home/data/tangle-brief-cc3/brief.md"
   assert_present "$brief" "brief was not scaffolded"
@@ -161,7 +163,9 @@ run_spawn() {
 test_spawn_isolation_abort() {
   local home proj fakebin out status
   home="$TMP_ROOT/spawn-home"
-  mkdir -p "$home/data"
+  mkdir -p "$home/data" "$home/config"
+  # The worktree-mode isolation abort; shared-checkout is the default.
+  printf 'worktree\n' > "$home/config/workspace-isolation"
   proj=$(make_repo "$TMP_ROOT/spawn-proj")
   fakebin=$(make_spawn_fakebin "$TMP_ROOT/spawn-fake")
   # The assertions concern identity, not how long an unchanged cwd is polled.
@@ -253,7 +257,9 @@ run_spawn_record() {
 test_spawn_tmux_window_construction() {
   local home proj fakebin rec wt out status
   home="$TMP_ROOT/spawn-rec-home"
-  mkdir -p "$home/data"
+  mkdir -p "$home/data" "$home/config"
+  # treehouse acquisition only happens in worktree mode.
+  printf 'worktree\n' > "$home/config/workspace-isolation"
   proj=$(make_repo "$TMP_ROOT/spawn-rec-proj")
   fakebin=$(make_spawn_record_fakebin "$TMP_ROOT/spawn-rec-fake")
   rec="$TMP_ROOT/spawn-rec.log"
