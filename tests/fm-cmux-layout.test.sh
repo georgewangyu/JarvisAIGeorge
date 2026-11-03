@@ -99,7 +99,7 @@ SH
   out=$(FM_HOME="$h" FM_CREW_STATE_BIN="$stub" bash "$ROOT/bin/fm-cmux-board.sh" --once)
   printf '%s\n' "$out" | sed -n 2p | grep -qx '  1 working · 1 unknown · 1 done' || fail "summary must count unknown separately: $out"
   printf '%s\n' "$out" | grep -Eq '^  unknown +b +cmux +unknown$' || fail "unknown row must stay unknown with its backend: $out"
-  printf '%s\n' "$out" | grep -q 'why: harness state unavailable' || fail "unknown row must carry its reason: $out"
+  printf '%s\n' "$out" | grep -q 'why: Kimi has no verified live-state source' || fail "unknown row must carry its reason: $out"
   printf '%s\n' "$out" | grep -Eq '^  done +c +tmux +done$' || fail "a row from another backend must name it: $out"
   pass "cmux board: unknown stays unknown in rows and counts; rows name their backend"
 }
@@ -172,7 +172,28 @@ test_board_title_resets_after_last_task() {
   pass "cmux board: the title resets after the last task, and a failed rename is shown and retried"
 }
 
+test_board_explains_codex_unknown() {
+  local h="$TMP_ROOT/codex" out stub="$TMP_ROOT/codex-crew-state.sh"
+  mkdir -p "$h/state" "$h/config"
+  printf 'backend=cmux\ncmux_workspace_id=W1\nkind=ship\nharness=codex\n' > "$h/state/cx.meta"
+  printf 'backend=cmux\ncmux_workspace_id=W2\nkind=ship\n' > "$h/state/odd.meta"
+  cat > "$stub" <<'SH'
+#!/usr/bin/env bash
+case "$1" in
+  cx) echo 'state: unknown · source: pane · harness state unavailable (unknown codex-unverified)' ;;
+  *) echo 'state: unknown · source: none · no task metadata' ;;
+esac
+SH
+  chmod +x "$stub"
+  out=$(FM_HOME="$h" FM_CREW_STATE_BIN="$stub" bash "$ROOT/bin/fm-cmux-board.sh" --once)
+  printf '%s\n' "$out" | sed -n 2p | grep -qx '  2 unknown' || fail "Codex must stay unknown, never working: $out"
+  printf '%s\n' "$out" | grep -q 'why: Codex gives no verified live state' || fail "Codex row must explain the missing source: $out"
+  printf '%s\n' "$out" | grep -q 'why: no task metadata' || fail "other unknowns keep their own detail: $out"
+  pass "cmux board: an unverified Codex worker shows unknown with the missing-capability reason"
+}
+
 test_layout_is_opt_in
+test_board_explains_codex_unknown
 test_board_title_resets_after_last_task
 test_board_keeps_unknown_and_names_backend
 test_board_group_summary

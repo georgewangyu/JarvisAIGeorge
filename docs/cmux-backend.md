@@ -144,6 +144,7 @@ Without it the adapter behaves exactly as described above.
   Every 10 seconds (`FM_CMUX_BOARD_INTERVAL`) it reads each task through `bin/fm-crew-state.sh` with forge reads off, redraws on change, renames the group with live counts, and colors worker tabs.
   It lists every task in the home and names each row's backend; only cmux tasks get tab colors.
   A state that is not verified stays `unknown` in its row, its count, and the group title, with the reason fm-crew-state gave, and is never counted as working.
+  Codex is the common case: it has no verified live-state source for a terminal worker yet (its app-server cannot observe a pane worker and Firstmate-written project hooks do not fire; `bin/fm-busy-lib.sh` owns that verdict), so a Codex row reads `unknown` with that reason and only its finished turns are signalled.
   It never types into, wakes, or closes a worker.
   Because it reads the same pane and run-step state as supervision, it covers Codex and every other harness, including those that run no hooks.
 - **Titles and identity.** A task tab is titled `◆ <task-id>`, and its scoped label `fm-<home-tag>-<id>` moves to the cmux workspace description.

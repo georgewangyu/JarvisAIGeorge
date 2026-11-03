@@ -282,11 +282,24 @@ fm_cmux_layout_sync() {  # <window> <group-ref> <summary>
   return 0
 }
 
-# The reason shown under an `unknown` board row: the detail fm-crew-state gave
-# for the unverified state ("state: unknown · source: <s> · <detail>").
+# The reason shown under an `unknown` board row. A known unverified-source
+# token from bin/fm-busy-lib.sh gets a plain explanation of the missing
+# capability; anything else shows the detail fm-crew-state gave
+# ("state: unknown · source: <s> · <detail>"). It explains, never guesses: the
+# row stays unknown either way.
 fm_cmux_layout_unknown_reason() {  # <crew-state line>
   local d=${1#*· source: }
   case "$d" in *' · '*) d=${d#* · } ;; *) d="" ;; esac
-  [ -n "$d" ] || d="no state reading"
+  case "$d" in
+    *codex-unverified*)
+      d="Codex gives no verified live state for a terminal worker (its app-server cannot see the pane, and project hooks do not fire); only a finished turn is signalled, so read the tab for progress" ;;
+    *kimi-unverified*)
+      d="Kimi has no verified live-state source yet; read the tab for progress" ;;
+    *capture-failed*)
+      d="the worker's tab could not be read" ;;
+    *no-target*)
+      d="the task record names no tab" ;;
+    '') d="no state reading" ;;
+  esac
   printf 'why: %s' "$d"
 }
