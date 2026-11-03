@@ -117,8 +117,8 @@ Creation starts only after a checked native `system.tree` RPC with `all_windows=
 Creation acknowledgements can precede tree visibility, so launch polls identity and default-surface readiness without repeating creation.
 A grouped creation attempt that fails or remains unconfirmed never falls through to a second plain creation.
 
-Cleanup uses the same native app-wide topology, checks that the task has a unique scoped label and exactly its recorded sole surface immediately before the first close and any forced close, then verifies that neither its workspace ID nor label remains in a fresh native read.
-A running-process confirmation may be retried only for that same unique task identity and exact sole surface, after teardown's existing work-safety gates.
+Cleanup uses the same native app-wide topology, checks that the task has a unique scoped label and exactly its recorded sole surface immediately before the first close and any confirmed retry, then polls bounded fresh native reads until neither its workspace ID nor label remains.
+A running-process confirmation may be retried only for that same unique task identity and exact sole surface, with a flag the installed CLI advertises, after teardown's existing work-safety gates.
 A failed or unreadable close retains metadata, including under teardown's `--force`; its backlog-close marker is published only after absence is proven.
 
 The direct RPC is required because `cmux tree --all` can silently fall back to a sequence of window-scoped reads when the connected server lacks `system.tree`; the client version alone does not prove native support. The nested window, workspace, pane, and surface identities and declared counts must be internally consistent, or creation, close, and recovery-grade liveness fail closed. The server's native method gives a coherent view of live routable windows at read time; another UI actor can still change them after the reply.

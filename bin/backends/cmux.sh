@@ -757,10 +757,31 @@ fm_backend_cmux_close_absent() {  # <inventory> <workspace-id> <scoped-title-or-
     'all(.[]; .id != $id and ($t == "" or (.title != $t and .description != $t)))' >/dev/null
 }
 
+# A close acknowledgement can precede tree visibility. Only a readable native
+# inventory proving both ID and scoped label absent can complete teardown.
+fm_backend_cmux_await_closed() {  # <workspace-id> <scoped-title-or-empty>
+  local id=$1 title=$2 i=0 tries=${FM_CMUX_CLOSE_WAIT_TRIES:-20} nap=${FM_CMUX_CLOSE_WAIT_SLEEP:-0.25} inventory
+  while [ "$i" -lt "$tries" ]; do
+    if inventory=$(fm_backend_cmux_close_inventory) && fm_backend_cmux_close_absent "$inventory" "$id" "$title"; then
+      return 0
+    fi
+    i=$((i + 1))
+    [ "$i" -lt "$tries" ] && sleep "$nap"
+  done
+  return 1
+}
+
+# Never guess a force/confirmation flag for a connected CLI build.
+fm_backend_cmux_close_confirm_flag() {
+  fm_backend_cmux_cli close-workspace --help 2>&1 \
+    | grep -oE -- '--(yes|force|confirm|no-confirm)([^A-Za-z-]|$)' | head -1 | grep -oE -- '--[a-z-]+'
+}
+
 # fm_backend_cmux_kill: remove the task's whole workspace and prove absence.
 # Nonzero means present or unproven; teardown must retain its endpoint record.
 # A zero-exit confirmation_required reply is a refusal, not a successful close.
-# Only a uniquely labelled task with its exact sole surface may retry --force;
+# Only a uniquely labelled task with its exact sole surface may retry with an
+# advertised confirmation flag;
 # callers still own all landed-work and completion gates before invoking kill.
 #
 # The selected-workspace teardown bug (docs/cmux-backend.md "Closing the last
@@ -775,7 +796,7 @@ fm_backend_cmux_close_absent() {  # <inventory> <workspace-id> <scoped-title-or-
 # guessed); without one the close is refused. An unreachable app or an
 # unreadable inventory is never read as absence.
 fm_backend_cmux_kill() {  # <target> [unused] [expected-label]
-  local expected_label=${3:-} wsid sfid win count inventory matches entry title='' out
+  local expected_label=${3:-} wsid sfid win count inventory matches entry title='' out flag
   fm_backend_cmux_parse_target "$1" || return 1
   wsid=$FM_BACKEND_CMUX_WORKSPACE
   sfid=$FM_BACKEND_CMUX_SURFACE
@@ -811,11 +832,11 @@ fm_backend_cmux_kill() {  # <target> [unused] [expected-label]
   inventory=$(fm_backend_cmux_close_inventory) || return 1
   fm_backend_cmux_owned_for_close "$inventory" "$wsid" "$sfid" "$win" "$title" || return 1
   out=$(fm_backend_cmux_cli close-workspace --workspace "$wsid" --window "$win" 2>&1) || true
+  fm_backend_cmux_await_closed "$wsid" "$title" && return 0
   inventory=$(fm_backend_cmux_close_inventory) || { echo "error: cmux post-close absence is unproven for $wsid" >&2; return 1; }
   entry=$(printf '%s' "$inventory" | jq -c --arg id "$wsid" '.[] | select(.id == $id)')
-  fm_backend_cmux_close_absent "$inventory" "$wsid" "$title" && return 0
   case "$out" in
-    *confirmation_required*)
+    *confirmation_required*|*'Confirmation required'*|*'confirmation required'*)
       [ -n "$title" ] || { echo "error: cmux confirmation requires an exact task label for $wsid" >&2; return 1; }
       [ -n "$entry" ] || { echo "error: cmux workspace $wsid vanished but a matching task label remains; refusing confirmation" >&2; return 1; }
       matches=$(printf '%s' "$inventory" | jq -c --arg t "$title" '[.[] | select(.title == $t or .description == $t)]')
@@ -828,9 +849,10 @@ fm_backend_cmux_kill() {  # <target> [unused] [expected-label]
         || { echo "error: cmux confirmation refused for changed or shared task surfaces in $wsid" >&2; return 1; }
       inventory=$(fm_backend_cmux_close_inventory) || return 1
       fm_backend_cmux_owned_for_close "$inventory" "$wsid" "$sfid" "$win" "$title" || return 1
-      fm_backend_cmux_cli close-workspace --workspace "$wsid" --window "$win" --force >/dev/null 2>&1 || true
-      inventory=$(fm_backend_cmux_close_inventory) || { echo "error: cmux forced-close absence is unproven for $wsid" >&2; return 1; }
-      fm_backend_cmux_close_absent "$inventory" "$wsid" "$title" && return 0
+      flag=$(fm_backend_cmux_close_confirm_flag)
+      [ -n "$flag" ] || { echo "error: cmux CLI advertises no confirmation flag for task workspace $wsid; retaining task records" >&2; return 1; }
+      fm_backend_cmux_cli close-workspace --workspace "$wsid" --window "$win" "$flag" >/dev/null 2>&1 || true
+      fm_backend_cmux_await_closed "$wsid" "$title" && return 0
       ;;
   esac
   echo "error: cmux workspace $wsid is still present after its close; retaining task records" >&2

@@ -1078,6 +1078,11 @@ case "$1" in
     [ "${2:-}" = system.tree ] || exit 2
     reads=$(cat "$d/rpc-reads" 2>/dev/null || printf 0)
     reads=$((reads+1)); printf '%s' "$reads" > "$d/rpc-reads"
+    if [ "$mode" = delayed-close ] && [ -f "$d/attempted" ]; then
+      close_reads=$(cat "$d/close-reads" 2>/dev/null || printf 0)
+      close_reads=$((close_reads+1)); printf '%s' "$close_reads" > "$d/close-reads"
+      [ "$close_reads" -ge 2 ] && touch "$d/gone"
+    fi
     case "$mode" in
       inventory-error) exit 1 ;;
       post-error) [ -f "$d/attempted" ] && exit 1 ;;
@@ -1149,18 +1154,24 @@ case "$1" in
     esac
     ;;
   close-workspace)
+    if [ "${2:-}" = --help ]; then
+      [ "$mode" = confirm-no-flag ] && printf 'Usage: cmux close-workspace --workspace <id>' \
+        || printf 'Usage: cmux close-workspace --workspace <id> [--force]'
+      exit 0
+    fi
     case "$*" in *"--workspace $ws"*) : ;; *) exit 99 ;; esac
     touch "$d/attempted"
     case "$mode" in
       error) exit 1 ;;
       noop|post-error) printf OK ;;
-      refuse) printf 'confirmation_required: Workspace has a running process; retry with --force' ;;
+      refuse|confirm-no-flag) printf 'confirmation_required: Workspace has a running process; retry with --force' ;;
       confirm|force-empty)
         case "$*" in
           *--force*) touch "$d/gone" "$d/forced"; printf OK ;;
           *) printf 'confirmation_required: Workspace has a running process; retry with --force' ;;
         esac
         ;;
+      delayed-close) printf OK ;;
       *) touch "$d/gone"; printf OK ;;
     esac
     ;;
@@ -1172,6 +1183,7 @@ SH
 
 run_cmux_close_case() {  # <case> [expected-label]
   FM_CMUX_CLOSE_DIR="$1" FM_HOME="$1/home" FM_ROOT="$ROOT" FM_CMUX_LAYOUT=off \
+    FM_CMUX_CLOSE_WAIT_TRIES="${FM_CMUX_CLOSE_WAIT_TRIES:-2}" FM_CMUX_CLOSE_WAIT_SLEEP=0 \
     PATH="$1/fakebin:$PATH" bash -c '. "$1"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111" "" "$2"' \
     _ "${FM_TEST_CMUX_CLOSE_ADAPTER:-$ROOT/bin/backends/cmux.sh}" "${2:-}"
 }
@@ -1278,6 +1290,25 @@ test_kill_confirmation_and_refusal() {
   assert_grep --force "$dir/log" "confirmation did not retry the exact task close"
   assert_present "$dir/gone" "confirmed close left its workspace"
   pass "fm_backend_cmux_kill: zero-exit semantic refusal, no-op, and unproven reads never report success"
+}
+
+test_kill_waits_for_native_close_visibility() {
+  local dir
+  dir=$(make_cmux_close_case kill-delayed-close delayed-close)
+  FM_CMUX_CLOSE_WAIT_TRIES=4 run_cmux_close_case "$dir" fm-close-task \
+    || fail 'delayed native absence should confirm the one close'
+  assert_equals 1 "$(grep -c '^close-workspace ' "$dir/log")" 'delayed visibility must not cause a second close'
+  assert_present "$dir/gone" 'delayed close never became absent'
+  pass 'fm_backend_cmux_kill: bounded native polling confirms delayed absence without a second close'
+}
+
+test_kill_requires_advertised_confirmation_flag() {
+  local dir
+  dir=$(make_cmux_close_case kill-no-confirm-flag confirm-no-flag)
+  run_cmux_close_case "$dir" fm-close-task && fail 'missing advertised flag must refuse confirmation'
+  assert_equals 1 "$(grep -c '^close-workspace --workspace ' "$dir/log")" 'no flag must mean no retry'
+  assert_absent "$dir/gone" 'unconfirmed workspace was removed'
+  pass 'fm_backend_cmux_kill: a confirmation without a CLI-advertised flag retains the endpoint'
 }
 
 test_kill_never_forces_unbound_or_shared_workspace() {
@@ -1456,6 +1487,8 @@ test_create_refuses_unproven_duplicate_check
 test_liveness_refuses_incomplete_inventory
 test_kill_closes_workspace_directly_when_not_last
 test_kill_confirmation_and_refusal
+test_kill_waits_for_native_close_visibility
+test_kill_requires_advertised_confirmation_flag
 test_kill_adds_sibling_when_last_in_window
 test_kill_never_forces_unbound_or_shared_workspace
 test_kill_recovers_stale_target_by_label

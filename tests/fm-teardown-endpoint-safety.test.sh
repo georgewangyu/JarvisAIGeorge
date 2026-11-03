@@ -1379,6 +1379,12 @@ arg() { local k=$1; shift; while [ $# -gt 0 ]; do [ "$1" = "$k" ] && { printf '%
 case "$1" in
   ping) echo PONG ;;
   version) echo 'cmux 0.65.2 (113) [fake]' ;;
+  rpc)
+    [ "${2:-}" = system.tree ] || exit 1
+    jq '{windows:[{id:"WIN-1",workspace_count:(.workspaces|length),
+      workspaces:(.workspaces | map((if .id == "WS-TASK" then "SF-1" else "SF-OTHER" end) as $sf
+        | . + {description:null,panes:[{id:("pane-"+.id),surface_count:1,
+          surface_ids:[$sf],surfaces:[{id:$sf}]}]}))}]}' "$D/cmux-workspaces.json" ;;
   list-windows) echo '[{"id":"WIN-1"}]' ;;
   workspace) cat "$D/cmux-workspaces.json" ;;
   list-panes)
@@ -1419,7 +1425,7 @@ test_cmux_teardown_keeps_the_record_until_the_workspace_is_gone() {
   rc=$?
   set -e
   [ "$rc" -ne 0 ] || fail "teardown reported success while the cmux workspace stayed open: $(cat "$dir/confirm.out")"
-  assert_grep "is still present after its close" "$dir/confirm.err" "the surviving cmux workspace was not reported"
+  assert_grep "no confirmation flag" "$dir/confirm.err" "the surviving cmux workspace was not reported"
   assert_present "$dir/home/state/$id.meta" "teardown removed the record naming a cmux workspace that is still open"
   jq -e 'any(.workspaces[]; .id == "WS-TASK")' "$dir/cmux-workspaces.json" >/dev/null \
     || fail "the fixture lost the surviving workspace, so the case proves nothing"
